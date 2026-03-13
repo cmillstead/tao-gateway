@@ -112,8 +112,8 @@ async def test_health_degraded_when_redis_down(client: AsyncClient) -> None:
     clear_health_cache()
 
     with patch(
-        "gateway.api.health._get_redis",
-        side_effect=ConnectionError("Redis unavailable (circuit breaker open)"),
+        "gateway.api.health.try_get_redis",
+        return_value=None,
     ):
         response = await client.get("/v1/health")
         data = response.json()

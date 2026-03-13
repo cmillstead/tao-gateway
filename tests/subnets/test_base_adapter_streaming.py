@@ -71,24 +71,43 @@ def mock_axon():
 
 
 @pytest.fixture
+def mock_miner_selector(mock_axon):
+    selector = MagicMock()
+    selector.select_miner.return_value = mock_axon
+    return selector
+
+
+@pytest.fixture
 def mock_dendrite():
     return AsyncMock()
 
 
-def _stream_kwargs(adapter, mock_dendrite, mock_axon, **extra):
+def _stream_kwargs(adapter, mock_dendrite, mock_miner_selector, **extra):
     """Build common kwargs for execute_stream calls."""
     return {
         "dendrite": mock_dendrite,
-        "axon": mock_axon,
-        "miner_uid": mock_axon.hotkey[:8],
+        "miner_selector": mock_miner_selector,
         **extra,
     }
+
+
+async def _collect_stream(adapter, request_data, mock_dendrite, mock_miner_selector, **extra):
+    """Call execute_stream and collect all chunks from the generator."""
+    headers, gen = await adapter.execute_stream(
+        request_data=request_data,
+        **_stream_kwargs(adapter, mock_dendrite, mock_miner_selector),
+        **extra,
+    )
+    chunks = []
+    async for chunk in gen:
+        chunks.append(chunk)
+    return headers, chunks
 
 
 class TestExecuteStream:
     @pytest.mark.asyncio
     async def test_yields_chunks_and_done(
-        self, adapter, mock_dendrite, mock_axon
+        self, adapter, mock_dendrite, mock_miner_selector
     ):
         async def _stream():
             yield "Hello"
@@ -96,13 +115,11 @@ class TestExecuteStream:
 
         mock_dendrite.forward.return_value = [_stream()]
 
-        chunks = []
-        async for chunk in adapter.execute_stream(
-            request_data={"model": "test"},
-            **_stream_kwargs(adapter, mock_dendrite, mock_axon),
-        ):
-            chunks.append(chunk)
+        headers, chunks = await _collect_stream(
+            adapter, {"model": "test"}, mock_dendrite, mock_miner_selector,
+        )
 
+        assert "X-TaoGateway-Miner-UID" in headers
         text = "".join(chunks)
         assert "Hello" in text
         assert "world" in text
@@ -111,26 +128,23 @@ class TestExecuteStream:
 
     @pytest.mark.asyncio
     async def test_includes_ttft_comment(
-        self, adapter, mock_dendrite, mock_axon
+        self, adapter, mock_dendrite, mock_miner_selector
     ):
         async def _stream():
             yield "token"
 
         mock_dendrite.forward.return_value = [_stream()]
 
-        chunks = []
-        async for chunk in adapter.execute_stream(
-            request_data={"model": "test"},
-            **_stream_kwargs(adapter, mock_dendrite, mock_axon),
-        ):
-            chunks.append(chunk)
+        _, chunks = await _collect_stream(
+            adapter, {"model": "test"}, mock_dendrite, mock_miner_selector,
+        )
 
         text = "".join(chunks)
         assert ": ttft_ms=" in text
 
     @pytest.mark.asyncio
     async def test_first_chunk_includes_role(
-        self, adapter, mock_dendrite, mock_axon
+        self, adapter, mock_dendrite, mock_miner_selector
     ):
         async def _stream():
             yield "Hello"
@@ -138,12 +152,9 @@ class TestExecuteStream:
 
         mock_dendrite.forward.return_value = [_stream()]
 
-        chunks = []
-        async for chunk in adapter.execute_stream(
-            request_data={"model": "test"},
-            **_stream_kwargs(adapter, mock_dendrite, mock_axon),
-        ):
-            chunks.append(chunk)
+        _, chunks = await _collect_stream(
+            adapter, {"model": "test"}, mock_dendrite, mock_miner_selector,
+        )
 
         # First data chunk should have role
         data_chunks = [c for c in chunks if c.startswith("data: {")]
@@ -156,7 +167,7 @@ class TestExecuteStream:
 
     @pytest.mark.asyncio
     async def test_timeout_mid_stream_no_stop_chunk(
-        self, adapter, mock_dendrite, mock_axon
+        self, adapter, mock_dendrite, mock_miner_selector
     ):
         async def _stream():
             yield "partial"
@@ -164,31 +175,24 @@ class TestExecuteStream:
 
         mock_dendrite.forward.return_value = [_stream()]
 
-        chunks = []
-        async for chunk in adapter.execute_stream(
-            request_data={"model": "test"},
-            **_stream_kwargs(adapter, mock_dendrite, mock_axon),
-        ):
-            chunks.append(chunk)
+        _, chunks = await _collect_stream(
+            adapter, {"model": "test"}, mock_dendrite, mock_miner_selector,
+        )
 
         text = "".join(chunks)
         assert "gateway_timeout" in text
         assert "data: [DONE]" in text
-        # Should NOT have a stop chunk with finish_reason after error
         assert '"finish_reason": "stop"' not in text
 
     @pytest.mark.asyncio
     async def test_dendrite_forward_timeout(
-        self, adapter, mock_dendrite, mock_axon
+        self, adapter, mock_dendrite, mock_miner_selector
     ):
         mock_dendrite.forward.side_effect = TimeoutError("connection timeout")
 
-        chunks = []
-        async for chunk in adapter.execute_stream(
-            request_data={"model": "test"},
-            **_stream_kwargs(adapter, mock_dendrite, mock_axon),
-        ):
-            chunks.append(chunk)
+        _, chunks = await _collect_stream(
+            adapter, {"model": "test"}, mock_dendrite, mock_miner_selector,
+        )
 
         text = "".join(chunks)
         assert "gateway_timeout" in text
@@ -196,16 +200,13 @@ class TestExecuteStream:
 
     @pytest.mark.asyncio
     async def test_dendrite_forward_error(
-        self, adapter, mock_dendrite, mock_axon
+        self, adapter, mock_dendrite, mock_miner_selector
     ):
         mock_dendrite.forward.side_effect = ConnectionError("network error")
 
-        chunks = []
-        async for chunk in adapter.execute_stream(
-            request_data={"model": "test"},
-            **_stream_kwargs(adapter, mock_dendrite, mock_axon),
-        ):
-            chunks.append(chunk)
+        _, chunks = await _collect_stream(
+            adapter, {"model": "test"}, mock_dendrite, mock_miner_selector,
+        )
 
         text = "".join(chunks)
         assert "bad_gateway" in text
@@ -213,16 +214,13 @@ class TestExecuteStream:
 
     @pytest.mark.asyncio
     async def test_empty_response(
-        self, adapter, mock_dendrite, mock_axon
+        self, adapter, mock_dendrite, mock_miner_selector
     ):
         mock_dendrite.forward.return_value = []
 
-        chunks = []
-        async for chunk in adapter.execute_stream(
-            request_data={"model": "test"},
-            **_stream_kwargs(adapter, mock_dendrite, mock_axon),
-        ):
-            chunks.append(chunk)
+        _, chunks = await _collect_stream(
+            adapter, {"model": "test"}, mock_dendrite, mock_miner_selector,
+        )
 
         text = "".join(chunks)
         assert "bad_gateway" in text
@@ -230,7 +228,7 @@ class TestExecuteStream:
 
     @pytest.mark.asyncio
     async def test_client_disconnect(
-        self, adapter, mock_dendrite, mock_axon
+        self, adapter, mock_dendrite, mock_miner_selector
     ):
         call_count = 0
 
@@ -248,12 +246,14 @@ class TestExecuteStream:
         async def _is_disconnected():
             return chunk_count >= disconnect_after
 
-        chunks = []
-        async for chunk in adapter.execute_stream(
+        headers, gen = await adapter.execute_stream(
             request_data={"model": "test"},
-            **_stream_kwargs(adapter, mock_dendrite, mock_axon),
+            dendrite=mock_dendrite,
+            miner_selector=mock_miner_selector,
             is_disconnected=_is_disconnected,
-        ):
+        )
+        chunks = []
+        async for chunk in gen:
             chunks.append(chunk)
             if "delta" in chunk:
                 chunk_count += 1

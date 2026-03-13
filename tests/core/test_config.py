@@ -61,3 +61,36 @@ class TestJwtSecretValidation:
                     database_url="postgresql+asyncpg://x:x@localhost/x",
                 )
         assert s.jwt_secret_key == "change-me-in-production"
+
+    def test_rejects_short_secret_in_production(self) -> None:
+        """Secrets shorter than 32 chars are rejected in production."""
+        from gateway.core.config import Settings
+
+        with pytest.raises(ValueError, match="at least 32 characters"):
+            Settings(
+                debug=False,
+                jwt_secret_key="tooshort",
+                database_url="postgresql+asyncpg://x:x@localhost/x",
+            )
+
+    def test_rejects_example_marker_in_production(self) -> None:
+        """Secrets containing 'example' are rejected in production."""
+        from gateway.core.config import Settings
+
+        with pytest.raises(ValueError, match="insecure marker"):
+            Settings(
+                debug=False,
+                jwt_secret_key="a" * 32 + "example",
+                database_url="postgresql+asyncpg://x:x@localhost/x",
+            )
+
+    def test_rejects_placeholder_marker_in_production(self) -> None:
+        """Secrets containing 'placeholder' are rejected in production."""
+        from gateway.core.config import Settings
+
+        with pytest.raises(ValueError, match="insecure marker"):
+            Settings(
+                debug=False,
+                jwt_secret_key="a" * 32 + "placeholder",
+                database_url="postgresql+asyncpg://x:x@localhost/x",
+            )

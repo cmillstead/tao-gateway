@@ -17,6 +17,7 @@ Environment = Literal["live", "test"]
 
 API_KEY_PREFIX_LENGTH = 20
 MAX_KEYS_PER_ORG = 50
+_REVOCATION_TOMBSTONE_TTL = 120
 
 
 def generate_api_key(env: Environment = "live") -> tuple[str, str, str]:
@@ -97,7 +98,7 @@ async def revoke_api_key(
         tombstone_key = f"api_key_revoked:{key.prefix}"
         try:
             async with redis.pipeline(transaction=True) as pipe:
-                pipe.set(tombstone_key, "1", ex=120)
+                pipe.set(tombstone_key, "1", ex=_REVOCATION_TOMBSTONE_TTL)
                 pipe.delete(cache_key)
                 await pipe.execute()
         except Exception:

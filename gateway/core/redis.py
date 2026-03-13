@@ -62,3 +62,18 @@ async def close_redis() -> None:
         if redis_client is not None:
             await redis_client.aclose()
             redis_client = None
+
+
+async def try_get_redis(*, reset_on_failure: bool = False) -> Redis | None:
+    """Best-effort Redis connection. Returns None when unavailable.
+
+    When reset_on_failure is True, resets the cached client on failure so
+    the next request triggers a fresh reconnection attempt.
+    """
+    try:
+        return await get_redis()
+    except Exception:
+        logger.warning("redis_unavailable")
+        if reset_on_failure:
+            await reset_redis()
+        return None

@@ -30,12 +30,12 @@ async def create_chat_completion(
     miner_selector = request.app.state.miner_selector
 
     if body.stream:
-        return _handle_stream(body, request, adapter, dendrite, miner_selector)
+        return await _handle_stream(body, request, adapter, dendrite, miner_selector)
 
     return await _handle_non_stream(body, adapter, dendrite, miner_selector)
 
 
-def _handle_stream(
+async def _handle_stream(
     body: ChatCompletionRequest,
     request: Request,
     adapter: BaseAdapter,
@@ -49,21 +49,18 @@ def _handle_stream(
         message_count=len(body.messages),
     )
 
-    # Select miner ONCE — same miner used for headers and query
-    config = adapter.get_config()
-    axon = miner_selector.select_miner(config.netuid)
-    miner_uid = axon.hotkey[:8]
+    headers, stream = await adapter.execute_stream(
+        request_data=body.model_dump(),
+        dendrite=dendrite,
+        miner_selector=miner_selector,
+        is_disconnected=request.is_disconnected,
+    )
+    miner_uid = headers["X-TaoGateway-Miner-UID"]
 
     async def _generator() -> AsyncGenerator[str, None]:
         had_error = False
         try:
-            async for chunk in adapter.execute_stream(
-                request_data=body.model_dump(),
-                dendrite=dendrite,
-                axon=axon,
-                miner_uid=miner_uid,
-                is_disconnected=request.is_disconnected,
-            ):
+            async for chunk in stream:
                 yield chunk
         except GatewayError as exc:
             had_error = True
@@ -72,6 +69,8 @@ def _handle_stream(
                 model=body.model,
                 error_type=exc.error_type,
             )
+            yield adapter._sse_error(exc.error_type, exc.message, miner_uid)
+            yield "data: [DONE]\n\n"
         except Exception as exc:
             had_error = True
             logger.error(
@@ -80,6 +79,8 @@ def _handle_stream(
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
+            yield adapter._sse_error("internal_error", "Internal server error", miner_uid)
+            yield "data: [DONE]\n\n"
 
         if not had_error:
             logger.info("chat_completion_stream_complete", model=body.model)
@@ -90,8 +91,7 @@ def _handle_stream(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-TaoGateway-Miner-UID": miner_uid,
-            "X-TaoGateway-Subnet": config.subnet_name,
+            **headers,
         },
     )
 
