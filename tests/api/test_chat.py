@@ -250,6 +250,52 @@ async def test_chat_completion_401_no_auth(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_chat_completion_502_malformed_adapter_response(
+    client: AsyncClient, test_app: FastAPI
+) -> None:
+    """Verify that a malformed from_response() output is caught by schema validation."""
+    api_key = await _get_api_key(client)
+    _setup_miner_selector(test_app)
+
+    mock_dendrite = AsyncMock()
+    mock_dendrite.forward.return_value = [_make_success_synapse()]
+    test_app.state.dendrite = mock_dendrite
+
+    from unittest.mock import patch
+
+    # Return a dict that passes sanitize_output (has choices[0].message.content)
+    # but fails ChatCompletionResponse validation (missing required fields)
+    def _bad_from_response(self, synapse, request_data):
+        return {
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "hi"},
+                    "finish_reason": "stop",
+                }
+            ],
+            # missing: id, object, created, model, usage
+        }
+
+    with patch(
+        "gateway.subnets.sn1_text.SN1TextAdapter.from_response",
+        _bad_from_response,
+    ):
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "tao-sn1",
+                "messages": [{"role": "user", "content": "Hello"}],
+            },
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+
+    assert response.status_code == 502
+    data = response.json()
+    assert data["error"]["type"] == "bad_gateway"
+
+
+@pytest.mark.asyncio
 async def test_chat_completion_response_openai_compatible(
     client: AsyncClient, test_app: FastAPI
 ) -> None:

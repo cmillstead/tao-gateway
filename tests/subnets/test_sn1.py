@@ -98,7 +98,7 @@ class TestSN1TextAdapterFromResponse:
 
 
 class TestSN1TextAdapterSanitize:
-    def test_strips_script_tags(self):
+    def test_strips_script_tags_with_content(self):
         from gateway.subnets.sn1_text import SN1TextAdapter
 
         adapter = SN1TextAdapter()
@@ -114,9 +114,8 @@ class TestSN1TextAdapterSanitize:
         result = adapter.sanitize_output(response_data)
         content = result["choices"][0]["message"]["content"]
         assert "<script" not in content
-        assert "</script>" not in content
-        assert content.startswith("Hello")
-        assert "world" in content
+        assert "alert" not in content
+        assert content == "Hello world"
 
     def test_strips_null_bytes(self):
         from gateway.subnets.sn1_text import SN1TextAdapter
@@ -207,6 +206,45 @@ class TestSN1TextAdapterSanitize:
         result = adapter.sanitize_output(response_data)
         content = result["choices"][0]["message"]["content"]
         assert content == "if x < 10 and y > 5, then z = x + y"
+
+    def test_strips_javascript_protocol_in_href(self):
+        from gateway.subnets.sn1_text import SN1TextAdapter
+
+        adapter = SN1TextAdapter()
+        response_data = {
+            "choices": [
+                {"message": {"content": 'Click <a href="javascript:alert(1)">here</a> now'}}
+            ]
+        }
+        result = adapter.sanitize_output(response_data)
+        content = result["choices"][0]["message"]["content"]
+        assert "javascript:" not in content
+        assert "here" in content
+
+    def test_strips_style_tag_with_content(self):
+        from gateway.subnets.sn1_text import SN1TextAdapter
+
+        adapter = SN1TextAdapter()
+        response_data = {
+            "choices": [
+                {"message": {"content": "Hello<style>.evil{background:url(evil)}</style> world"}}
+            ]
+        }
+        result = adapter.sanitize_output(response_data)
+        content = result["choices"][0]["message"]["content"]
+        assert "<style" not in content
+        assert ".evil" not in content
+        assert content == "Hello world"
+
+    def test_handles_none_completion(self):
+        from gateway.subnets.sn1_text import SN1TextAdapter
+
+        adapter = SN1TextAdapter()
+        response_data = {
+            "choices": [{"message": {"content": None}}]
+        }
+        result = adapter.sanitize_output(response_data)
+        assert result["choices"][0]["message"]["content"] == ""
 
     def test_preserves_code_with_html_examples(self):
         from gateway.subnets.sn1_text import SN1TextAdapter
