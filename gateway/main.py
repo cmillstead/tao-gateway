@@ -5,8 +5,10 @@ from fastapi import FastAPI
 
 from gateway.api.router import router
 from gateway.core.config import settings
+from gateway.core.exceptions import GatewayError
 from gateway.core.logging import setup_logging
 from gateway.core.redis import close_redis
+from gateway.middleware.error_handler import gateway_exception_handler
 
 
 @asynccontextmanager
@@ -23,4 +25,5 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_exception_handler(GatewayError, gateway_exception_handler)  # type: ignore[arg-type]
 app.include_router(router)
