@@ -177,3 +177,85 @@ def test_response_schema_serialization():
     assert data["object"] == "chat.completion"
     assert data["usage"]["total_tokens"] == 8
     assert isinstance(data["choices"], list)
+
+
+def test_chunk_schema_structure():
+    from gateway.schemas.chat import ChatCompletionChunk, ChunkChoice, DeltaMessage
+
+    chunk = ChatCompletionChunk(
+        id="chatcmpl-abc123",
+        object="chat.completion.chunk",
+        created=1234567890,
+        model="tao-sn1",
+        choices=[
+            ChunkChoice(
+                index=0,
+                delta=DeltaMessage(content="Hello"),
+                finish_reason=None,
+            )
+        ],
+    )
+    assert chunk.object == "chat.completion.chunk"
+    assert chunk.choices[0].delta.content == "Hello"
+    assert chunk.choices[0].finish_reason is None
+
+
+def test_chunk_schema_done():
+    from gateway.schemas.chat import ChatCompletionChunk, ChunkChoice, DeltaMessage
+
+    chunk = ChatCompletionChunk(
+        id="chatcmpl-abc123",
+        object="chat.completion.chunk",
+        created=1234567890,
+        model="tao-sn1",
+        choices=[
+            ChunkChoice(
+                index=0,
+                delta=DeltaMessage(),
+                finish_reason="stop",
+            )
+        ],
+    )
+    assert chunk.choices[0].finish_reason == "stop"
+    assert chunk.choices[0].delta.content is None
+    assert chunk.choices[0].delta.role is None
+
+
+def test_delta_message_partial_fields():
+    from gateway.schemas.chat import DeltaMessage
+
+    # Role only (first chunk convention)
+    d1 = DeltaMessage(role="assistant")
+    assert d1.role == "assistant"
+    assert d1.content is None
+
+    # Content only
+    d2 = DeltaMessage(content="token")
+    assert d2.role is None
+    assert d2.content == "token"
+
+    # Empty (done signal)
+    d3 = DeltaMessage()
+    assert d3.role is None
+    assert d3.content is None
+
+
+def test_chunk_schema_serialization():
+    from gateway.schemas.chat import ChatCompletionChunk, ChunkChoice, DeltaMessage
+
+    chunk = ChatCompletionChunk(
+        id="chatcmpl-abc",
+        object="chat.completion.chunk",
+        created=1234567890,
+        model="tao-sn1",
+        choices=[
+            ChunkChoice(
+                index=0,
+                delta=DeltaMessage(content="Hi"),
+                finish_reason=None,
+            )
+        ],
+    )
+    data = chunk.model_dump()
+    assert data["object"] == "chat.completion.chunk"
+    assert data["choices"][0]["delta"]["content"] == "Hi"
