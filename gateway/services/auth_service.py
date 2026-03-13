@@ -1,3 +1,4 @@
+import contextlib
 from datetime import UTC, datetime, timedelta
 
 from argon2.exceptions import VerifyMismatchError
@@ -9,6 +10,10 @@ from gateway.core.config import settings
 from gateway.core.exceptions import AuthenticationError
 from gateway.core.security import ph
 from gateway.models.organization import Organization
+
+# Pre-computed dummy hash for constant-time login rejection.
+# Prevents timing attacks that reveal whether an email is registered.
+_DUMMY_HASH = ph.hash("dummy-password-for-timing-equalization")
 
 
 async def signup(email: str, password: str, db: AsyncSession) -> Organization:
@@ -23,6 +28,10 @@ async def signup(email: str, password: str, db: AsyncSession) -> Organization:
 async def login(email: str, password: str, db: AsyncSession) -> str:
     org = await db.scalar(select(Organization).where(Organization.email == email))
     if org is None:
+        # Run argon2 verify against dummy hash to equalize timing with the
+        # "valid email, wrong password" path — prevents email enumeration.
+        with contextlib.suppress(VerifyMismatchError):
+            ph.verify(_DUMMY_HASH, password)
         raise AuthenticationError("Invalid credentials")
     try:
         ph.verify(org.password_hash, password)

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = _INSECURE_DEFAULT_SECRET
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 30
+    auth_rate_limit_per_minute: int = 30
 
     # Bittensor
     wallet_name: str = "default"

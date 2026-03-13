@@ -488,6 +488,7 @@ Claude Opus 4.6
 
 ### Change Log
 - 2026-03-12: Story 1.2 implementation — DB models, auth service, API key service, auth middleware, error handler, API routes, 36 tests
+- 2026-03-12: Adversarial code review — fixed 3 HIGH (timing attack, no rate limiting, tests on prod DB) + 3 MEDIUM (false File List claim, unsafe fixture, no per-test isolation). 40/40 tests pass.
 
 ### File List
 - gateway/models/base.py (new) — DeclarativeBase shared by all models
@@ -506,7 +507,7 @@ Claude Opus 4.6
 - gateway/main.py (modified) — register exception handler
 - migrations/env.py (modified) — import Base.metadata for autogenerate
 - migrations/versions/795f9c954fcb_create_organizations_and_api_keys_tables.py (new)
-- pyproject.toml (modified) — added B008 to ruff ignore, jose.* to mypy overrides, pytest-asyncio session loop scope
+- ~~pyproject.toml~~ (REMOVED — these settings already existed from Story 1.1, not modified in this story)
 - tests/conftest.py (modified) — session-scoped DB cleanup, jwt_token + auth_headers fixtures
 - tests/api/test_auth.py (new) — 7 auth endpoint tests
 - tests/api/test_api_keys.py (new) — 4 API key endpoint tests
@@ -526,3 +527,9 @@ Claude Opus 4.6
 - gateway/middleware/auth.py (modified) — use shared ph from gateway.core.security
 - tests/middleware/test_auth_middleware.py (modified) — added 5 unit tests covering cache hit, cache miss, invalid hash, key not found, missing credentials
 - tests/api/test_api_keys.py (modified) — fixed dead assertion in test_list_api_keys_masked
+
+**Adversarial Code Review Fixes (2026-03-12):**
+- gateway/services/auth_service.py (modified) — constant-time login rejection via dummy argon2 hash to prevent email enumeration timing attacks
+- gateway/api/auth.py (modified) — added per-IP Redis rate limiting (30/min) on auth endpoints to prevent brute force
+- gateway/core/config.py (modified) — added auth_rate_limit_per_minute setting
+- tests/conftest.py (modified) — tests now use tao_gateway_test database (not production), per-test DB truncation + Redis rate limit key cleanup for full isolation
