@@ -20,12 +20,18 @@ from gateway.services.auth_service import create_jwt_token  # noqa: E402
 async def _clean_state() -> AsyncGenerator[None, None]:
     """Truncate DB tables and flush Redis rate limit keys before and after each test."""
     redis = await get_redis()
+    async with engine.begin() as conn:
+        await conn.execute(text("TRUNCATE TABLE api_keys, organizations CASCADE"))
     for key in await redis.keys("auth_rate:*"):
+        await redis.delete(key)
+    for key in await redis.keys("api_key:*"):
         await redis.delete(key)
     yield
     async with engine.begin() as conn:
         await conn.execute(text("TRUNCATE TABLE api_keys, organizations CASCADE"))
     for key in await redis.keys("auth_rate:*"):
+        await redis.delete(key)
+    for key in await redis.keys("api_key:*"):
         await redis.delete(key)
 
 
