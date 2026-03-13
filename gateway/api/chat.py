@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import structlog
 from fastapi import APIRouter, Depends, Request
@@ -9,10 +9,14 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
 from gateway.schemas.chat import ChatCompletionRequest, ChatCompletionResponse
+from gateway.subnets.base import SSE_DONE
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    import bittensor as bt
+
+    from gateway.routing.selector import MinerSelector
     from gateway.subnets.base import BaseAdapter
 
 logger = structlog.get_logger()
@@ -39,8 +43,8 @@ async def _handle_stream(
     body: ChatCompletionRequest,
     request: Request,
     adapter: BaseAdapter,
-    dendrite: Any,
-    miner_selector: Any,
+    dendrite: bt.Dendrite,
+    miner_selector: MinerSelector,
 ) -> StreamingResponse:
     """Handle streaming chat completion request."""
     logger.info(
@@ -69,8 +73,8 @@ async def _handle_stream(
                 model=body.model,
                 error_type=exc.error_type,
             )
-            yield adapter._sse_error(exc.error_type, exc.message, miner_uid)
-            yield "data: [DONE]\n\n"
+            yield adapter.sse_error(exc.error_type, exc.message, miner_uid)
+            yield SSE_DONE
         except Exception as exc:
             had_error = True
             logger.error(
@@ -79,8 +83,8 @@ async def _handle_stream(
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
-            yield adapter._sse_error("internal_error", "Internal server error", miner_uid)
-            yield "data: [DONE]\n\n"
+            yield adapter.sse_error("internal_error", "Internal server error", miner_uid)
+            yield SSE_DONE
 
         if not had_error:
             logger.info("chat_completion_stream_complete", model=body.model)
@@ -99,8 +103,8 @@ async def _handle_stream(
 async def _handle_non_stream(
     body: ChatCompletionRequest,
     adapter: BaseAdapter,
-    dendrite: Any,
-    miner_selector: Any,
+    dendrite: bt.Dendrite,
+    miner_selector: MinerSelector,
 ) -> JSONResponse:
     """Handle non-streaming chat completion request."""
     logger.info(

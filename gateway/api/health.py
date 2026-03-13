@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,10 +89,6 @@ def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | N
     return result
 
 
-async def _try_get_redis_for_health() -> Redis | None:
-    """Best-effort Redis for health checks. Returns None if unavailable."""
-    return await try_get_redis()
-
 
 @router.get("/v1/health", response_model=HealthResponse)
 async def health_check(
@@ -114,7 +109,7 @@ async def health_check(
         db_status = "unhealthy"
         logger.warning("health_check_db_failed")
 
-    redis = await _try_get_redis_for_health()
+    redis = await try_get_redis()
     if redis is None:
         redis_status = "unhealthy"
         logger.warning("health_check_redis_failed")
@@ -141,12 +136,13 @@ async def health_check(
     )
 
     # Only cache healthy responses so degraded state is not sticky.
-    # Cache the serialized dict to avoid repeated model_dump() calls (L1).
+    # Serialize once and reuse to avoid repeated model_dump() calls.
+    result_dict = result.model_dump()
     if is_healthy:
-        _health_cache["result"] = result.model_dump()
+        _health_cache["result"] = result_dict
         _health_cache["time"] = now
     else:
         _health_cache.clear()
 
     status_code = 200 if is_healthy else 503
-    return JSONResponse(content=result.model_dump(), status_code=status_code)
+    return JSONResponse(content=result_dict, status_code=status_code)

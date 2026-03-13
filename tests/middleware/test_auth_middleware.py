@@ -221,3 +221,55 @@ async def test_api_key_creation_and_listing_flow(client: AsyncClient) -> None:
     assert key_resp.status_code == 201
     api_key = key_resp.json()["key"]
     assert api_key.startswith("tao_sk_live_")
+
+
+@pytest.mark.asyncio
+async def test_get_current_org_id_rejects_non_uuid_sub(client: AsyncClient) -> None:
+    """JWT with non-UUID sub claim should return 401."""
+    from gateway.services.auth_service import create_jwt_token
+
+    # create_jwt_token accepts any string as org_id
+    token = create_jwt_token("not-a-valid-uuid")
+    response = await client.get(
+        "/dashboard/api-keys",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_api_key_cache_corrupt_unicode_falls_through_to_db() -> None:
+    """Corrupt (non-UTF-8) cache entry triggers DB fallback, not 500."""
+    async for db in get_db():
+        org = await _create_org(db)
+        _, full_key = await create_api_key(org.id, "live", db)
+
+        # Populate cache with non-UTF-8 bytes
+        redis = await get_redis()
+        prefix = full_key[:API_KEY_PREFIX_LENGTH]
+        await redis.set(f"api_key:{prefix}", b"\xff\xfe\xfd")
+
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=full_key)
+        result = await get_current_api_key(creds, db)
+
+        assert isinstance(result, ApiKeyInfo)
+        assert result.org_id == org.id
+
+
+@pytest.mark.asyncio
+async def test_api_key_cache_corrupt_format_falls_through_to_db() -> None:
+    """Cache entry with wrong format (no colons) triggers DB fallback."""
+    async for db in get_db():
+        org = await _create_org(db)
+        _, full_key = await create_api_key(org.id, "live", db)
+
+        # Populate cache with malformed value (no colon separators)
+        redis = await get_redis()
+        prefix = full_key[:API_KEY_PREFIX_LENGTH]
+        await redis.set(f"api_key:{prefix}", "bad-format-no-colons")
+
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=full_key)
+        result = await get_current_api_key(creds, db)
+
+        assert isinstance(result, ApiKeyInfo)
+        assert result.org_id == org.id

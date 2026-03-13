@@ -142,12 +142,15 @@ class TestMetagraphManager:
         self, mock_subtensor: MagicMock
     ) -> None:
         """Verify the background loop fires after the initial sync."""
+        sync_event = asyncio.Event()
         sync_count = 0
         original_metagraph = mock_subtensor.metagraph
 
         def counting_metagraph(netuid: int) -> MagicMock:
             nonlocal sync_count
             sync_count += 1
+            if sync_count >= 2:
+                sync_event.set()
             return original_metagraph(netuid)
 
         mock_subtensor.metagraph = counting_metagraph
@@ -155,10 +158,9 @@ class TestMetagraphManager:
         mgr = MetagraphManager(subtensor=mock_subtensor, sync_interval=0.01)
         mgr.register_subnet(1)
         await mgr.start()  # initial sync = 1
-        # Wait long enough for at least one background sync
-        await asyncio.sleep(0.1)
+        # Wait for at least one background sync (event-based, not wall-clock)
+        await asyncio.wait_for(sync_event.wait(), timeout=5.0)
         await mgr.stop()
-        # Must have synced more than once (initial + at least one loop iteration)
         assert sync_count >= 2, f"Expected >=2 syncs, got {sync_count}"
 
     @pytest.mark.asyncio

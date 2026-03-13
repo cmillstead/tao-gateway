@@ -145,3 +145,54 @@ class TestLifespanShutdown:
                 pass
 
             mock_dendrite.aclose_session.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_continues_after_metagraph_stop_failure(self) -> None:
+        """If metagraph_manager.stop() raises, shutdown still disposes engine and closes Redis."""
+        mock_subtensor = MagicMock()
+        mock_metagraph = MagicMock()
+        mock_metagraph.n = 0
+        mock_subtensor.metagraph.return_value = mock_metagraph
+
+        mock_dendrite = MagicMock()
+        mock_dendrite.aclose_session = AsyncMock()
+
+        mock_close_redis = AsyncMock()
+
+        with (
+            patch("gateway.main.create_wallet", return_value=MagicMock()),
+            patch("gateway.main.create_subtensor", return_value=mock_subtensor),
+            patch("gateway.main.create_dendrite", return_value=mock_dendrite),
+            patch("gateway.main.get_engine") as mock_engine,
+            patch("gateway.main.get_redis") as mock_redis,
+            patch("gateway.main.close_redis", mock_close_redis),
+            patch(
+                "gateway.main.MetagraphManager.stop",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("stop failed"),
+            ),
+        ):
+            mock_conn = AsyncMock()
+            mock_engine_instance = MagicMock()
+            mock_engine_instance.connect.return_value.__aenter__ = AsyncMock(
+                return_value=mock_conn
+            )
+            mock_engine_instance.connect.return_value.__aexit__ = AsyncMock()
+            mock_engine_instance.dispose = AsyncMock()
+            mock_engine.return_value = mock_engine_instance
+
+            mock_redis_instance = AsyncMock()
+            mock_redis.return_value = mock_redis_instance
+
+            from fastapi import FastAPI
+
+            from gateway.main import lifespan
+
+            test_app = FastAPI()
+            async with lifespan(test_app):
+                pass
+
+            # Despite stop() failing, engine.dispose() and close_redis() should still be called
+            mock_engine_instance.dispose.assert_called_once()
+            mock_close_redis.assert_called_once()
+            mock_dendrite.aclose_session.assert_called_once()

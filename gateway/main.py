@@ -112,7 +112,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await engine.dispose()
     except Exception:
         logger.warning("shutdown_engine_dispose_failed", exc_info=True)
-    await close_redis()
+    try:
+        await close_redis()
+    except Exception:
+        logger.warning("shutdown_redis_close_failed", exc_info=True)
 
 
 app = FastAPI(

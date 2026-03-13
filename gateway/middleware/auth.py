@@ -11,15 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.database import get_db
 from gateway.core.exceptions import AuthenticationError
 from gateway.core.redis import try_get_redis
-from gateway.core.security import ph
+from gateway.core.security import ph, try_rehash
 from gateway.models.api_key import ApiKey
-from gateway.services.api_key_service import API_KEY_PREFIX_LENGTH
+from gateway.services.api_key_service import API_KEY_CACHE_TTL, API_KEY_PREFIX_LENGTH
 from gateway.services.auth_service import verify_jwt_token
 
 logger = structlog.get_logger()
 security = HTTPBearer(auto_error=False)
-
-_API_KEY_CACHE_TTL = 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,20 +107,14 @@ async def get_current_api_key(
 
     # Best-effort rehash — don't fail the request if this errors
     current_hash = key_record.key_hash
-    try:
-        if ph.check_needs_rehash(key_record.key_hash):
-            current_hash = ph.hash(token)
-            key_record.key_hash = current_hash
-            await db.commit()
-    except Exception:
-        logger.warning("api_key_rehash_failed", prefix=redacted)
-        await db.rollback()
+    await try_rehash(db, key_record, "key_hash", token)
+    current_hash = key_record.key_hash  # may have been updated by rehash
 
     # Best-effort cache population
     if redis is not None:
         cache_value = f"{current_hash}:{key_record.id}:{key_record.org_id}"
         try:
-            await redis.set(cache_key, cache_value, ex=_API_KEY_CACHE_TTL)
+            await redis.set(cache_key, cache_value, ex=API_KEY_CACHE_TTL)
         except Exception:
             logger.warning("redis_set_failed", prefix=redacted)
 

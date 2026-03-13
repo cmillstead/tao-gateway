@@ -1,5 +1,6 @@
 import structlog
 
+from gateway.core.exceptions import SubnetUnavailableError
 from gateway.subnets.base import BaseAdapter
 
 logger = structlog.get_logger()
@@ -23,16 +24,12 @@ class AdapterRegistry:
     def get(self, netuid: int) -> BaseAdapter:
         adapter = self._by_netuid.get(netuid)
         if adapter is None:
-            from gateway.core.exceptions import SubnetUnavailableError
-
             raise SubnetUnavailableError(f"sn{netuid}")
         return adapter
 
     def get_by_model(self, model_name: str) -> BaseAdapter:
         adapter = self._by_model.get(model_name)
         if adapter is None:
-            from gateway.core.exceptions import SubnetUnavailableError
-
             raise SubnetUnavailableError(
                 model_name, reason=f"no adapter registered for model '{model_name}'"
             )

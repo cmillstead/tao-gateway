@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
+    # Pool sizes
+    db_pool_size: int = 20
+    db_max_overflow: int = 10
+    redis_max_connections: int = 20
+
     # App
     app_name: str = "TaoGateway"
     app_version: str = _get_app_version()
@@ -89,3 +94,13 @@ def get_settings() -> Settings:
 # Module-level convenience alias — instantiated at first import.
 # lru_cache ensures only one Settings instance exists across the process.
 settings = get_settings()
+
+
+def reset_settings() -> None:
+    """Clear LRU cache and re-create the settings singleton.
+
+    Used by tests that need to verify behavior with different settings.
+    """
+    global settings  # noqa: PLW0603
+    get_settings.cache_clear()
+    settings = get_settings()

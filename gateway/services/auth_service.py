@@ -1,7 +1,6 @@
 import contextlib
 from datetime import UTC, datetime, timedelta
 
-import structlog
 from argon2.exceptions import VerifyMismatchError
 from jose import JWTError, jwt
 from sqlalchemy import select
@@ -9,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import settings
 from gateway.core.exceptions import AuthenticationError
-from gateway.core.security import ph
+from gateway.core.security import ph, try_rehash
 from gateway.models.organization import Organization
 
 # Pre-computed dummy hash for constant-time login rejection.
@@ -40,13 +39,7 @@ async def login(email: str, password: str, db: AsyncSession) -> str:
         raise AuthenticationError("Invalid credentials") from exc
 
     # Best-effort rehash — don't fail login if this errors
-    try:
-        if ph.check_needs_rehash(org.password_hash):
-            org.password_hash = ph.hash(password)
-            await db.commit()
-    except Exception:
-        structlog.get_logger().warning("password_rehash_failed", org_id=str(org.id))
-        await db.rollback()
+    await try_rehash(db, org, "password_hash", password)
 
     return create_jwt_token(str(org.id))
 
