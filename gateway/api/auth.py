@@ -1,3 +1,5 @@
+from typing import Any
+
 import structlog
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.exc import IntegrityError
@@ -23,7 +25,7 @@ if current == 1 then
 end
 return current
 """
-_rate_limit_script: object | None = None
+_rate_limit_script: Any = None
 _rate_limit_script_redis: object | None = None  # track which Redis instance owns the script
 
 
