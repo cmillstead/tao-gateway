@@ -10,17 +10,30 @@ import pytest  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
+from gateway.api.health import clear_health_cache  # noqa: E402
 from gateway.core.database import engine  # noqa: E402
 from gateway.core.redis import get_redis  # noqa: E402
 from gateway.main import app  # noqa: E402
+from gateway.models import Base  # noqa: E402
 from gateway.services.auth_service import create_jwt_token  # noqa: E402
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def _create_tables() -> None:
+    """Recreate all tables from model metadata at test session start."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
 
 
 async def _flush_test_state() -> None:
     """Truncate DB tables and flush Redis test keys."""
+    clear_health_cache()
     redis = await get_redis()
+    # Dynamically resolve table names from model metadata
+    table_names = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE TABLE api_keys, organizations CASCADE"))
+        await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
     async for key in redis.scan_iter("auth_rate:*"):
         await redis.delete(key)
     async for key in redis.scan_iter("api_key:*"):

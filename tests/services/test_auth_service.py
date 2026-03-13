@@ -1,6 +1,8 @@
 import pytest
 from argon2 import PasswordHasher
+from jose import jwt
 
+from gateway.core.config import settings
 from gateway.core.exceptions import AuthenticationError
 from gateway.services.auth_service import create_jwt_token, verify_jwt_token
 
@@ -21,6 +23,18 @@ def test_jwt_create_and_verify() -> None:
     assert len(token) > 0
     result = verify_jwt_token(token)
     assert result == org_id
+
+
+def test_jwt_contains_iat_claim() -> None:
+    org_id = "550e8400-e29b-41d4-a716-446655440000"
+    token = create_jwt_token(org_id)
+    payload = jwt.decode(
+        token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+    )
+    assert "iat" in payload
+    assert "exp" in payload
+    assert "sub" in payload
+    assert payload["iat"] <= payload["exp"]
 
 
 def test_jwt_verify_invalid_token() -> None:

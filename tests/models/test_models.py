@@ -17,12 +17,13 @@ def test_base_metadata_has_tables() -> None:
 
 def test_organization_columns() -> None:
     columns = {c.name for c in Organization.__table__.columns}
-    assert columns == {"id", "email", "password_hash", "created_at"}
+    assert columns == {"id", "email", "password_hash", "created_at", "updated_at"}
 
 
 def test_api_key_columns() -> None:
     columns = {c.name for c in ApiKey.__table__.columns}
-    assert columns == {"id", "org_id", "prefix", "key_hash", "is_active", "created_at"}
+    expected = {"id", "org_id", "prefix", "key_hash", "is_active", "created_at", "updated_at"}
+    assert columns == expected
 
 
 def test_organization_default_id() -> None:
