@@ -49,7 +49,7 @@ async def revoke_api_key(
     if key is None:
         return None
     key.is_active = False
+    await redis.delete(f"api_key:{key.prefix}")
     await db.commit()
     await db.refresh(key)
-    await redis.delete(f"api_key:{key.prefix}")
     return key

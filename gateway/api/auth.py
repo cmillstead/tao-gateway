@@ -20,13 +20,12 @@ async def _rate_limit_auth(
     redis: Redis = Depends(get_redis),
 ) -> None:
     """Simple per-IP rate limit on auth endpoints."""
+    direct_ip = request.client.host if request.client else "unknown"
     forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
+    if forwarded_for and direct_ip in settings.trusted_proxies:
         client_ip = forwarded_for.split(",")[0].strip()
-    elif request.client:
-        client_ip = request.client.host
     else:
-        client_ip = "unknown"
+        client_ip = direct_ip
     key = f"auth_rate:{client_ip}"
     async with redis.pipeline(transaction=True) as pipe:
         pipe.incr(key)
