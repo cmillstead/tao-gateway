@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import settings
 from gateway.core.database import get_db
-from gateway.core.redis import get_redis as _get_redis
+from gateway.core.redis import try_get_redis
 from gateway.schemas.health import HealthResponse, SubnetHealthStatus
 
 if TYPE_CHECKING:
@@ -92,10 +92,7 @@ def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | N
 
 async def _try_get_redis_for_health() -> Redis | None:
     """Best-effort Redis for health checks. Returns None if unavailable."""
-    try:
-        return await _get_redis()
-    except Exception:
-        return None
+    return await try_get_redis()
 
 
 @router.get("/v1/health", response_model=HealthResponse)

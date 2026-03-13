@@ -1,14 +1,12 @@
 import json
-import re
 import time
-import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
 import bittensor as bt
 
 from gateway.core.config import settings
-from gateway.subnets.base import AdapterConfig, BaseAdapter
+from gateway.subnets.base import AdapterConfig, BaseAdapter, generate_completion_id
 
 
 class TextGenSynapse(bt.Synapse):  # type: ignore[misc]
@@ -41,21 +39,24 @@ class TextGenStreamingSynapse(bt.StreamingSynapse):  # type: ignore[misc]
         return {"completion": self.completion}
 
 
+def _extract_messages(request_data: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Extract parallel role/message arrays from OpenAI chat format."""
+    messages = request_data["messages"]
+    return [m["role"] for m in messages], [m["content"] for m in messages]
+
+
 class SN1TextAdapter(BaseAdapter):
     """Thin adapter: OpenAI chat format <-> TextGenSynapse."""
 
     def to_synapse(self, request_data: dict[str, Any]) -> TextGenSynapse:
-        messages = request_data["messages"]
-        return TextGenSynapse(
-            roles=[m["role"] for m in messages],
-            messages=[m["content"] for m in messages],
-        )
+        roles, messages = _extract_messages(request_data)
+        return TextGenSynapse(roles=roles, messages=messages)
 
     def from_response(
         self, synapse: TextGenSynapse, request_data: dict[str, Any]
     ) -> dict[str, Any]:
         return {
-            "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
+            "id": generate_completion_id(),
             "object": "chat.completion",
             "created": int(time.time()),
             "model": str(request_data.get("model", "tao-sn1")),
@@ -76,52 +77,18 @@ class SN1TextAdapter(BaseAdapter):
             },
         }
 
-    # Dangerous HTML tags that could execute code or load external content
-    _DANGEROUS_TAGS_RE = re.compile(
-        r"<\s*/?\s*(?:script|iframe|object|embed|form|input|button|textarea"
-        r"|select|style|link|meta|base|applet|svg)\b[^>]*>",
-        re.IGNORECASE | re.DOTALL,
-    )
-    # Content between script/style tags (strip payload, not just the tags)
-    _DANGEROUS_CONTENT_RE = re.compile(
-        r"<\s*(?:script|style)\b[^>]*>.*?<\s*/\s*(?:script|style)\s*>",
-        re.IGNORECASE | re.DOTALL,
-    )
-    # Event handler attributes on any tag (onerror, onload, onclick, etc.)
-    _EVENT_HANDLER_RE = re.compile(
-        r"<([^>]*?\s)on\w+\s*=[^>]*>",
-        re.IGNORECASE,
-    )
-    # javascript: protocol in attributes
-    _JS_PROTOCOL_RE = re.compile(
-        r"<[^>]*\s(?:href|src|action)\s*=\s*[\"']?\s*javascript\s*:[^>]*>",
-        re.IGNORECASE,
-    )
-
     def sanitize_output(self, response_data: dict[str, Any]) -> dict[str, Any]:
         content = response_data["choices"][0]["message"]["content"]
         if not isinstance(content, str):
             content = str(content) if content is not None else ""
-        # Strip script/style tags WITH their content (prevent payload leaking as text)
-        content = self._DANGEROUS_CONTENT_RE.sub("", content)
-        # Strip remaining dangerous tags (unpaired or other dangerous elements)
-        content = self._DANGEROUS_TAGS_RE.sub("", content)
-        # Strip tags with event handler attributes (e.g., <img onerror="...">)
-        content = self._EVENT_HANDLER_RE.sub("", content)
-        # Strip tags with javascript: protocol (e.g., <a href="javascript:...">)
-        content = self._JS_PROTOCOL_RE.sub("", content)
-        content = content.replace("\x00", "")
-        response_data["choices"][0]["message"]["content"] = content
+        response_data["choices"][0]["message"]["content"] = self.sanitize_text(content)
         return response_data
 
     def to_streaming_synapse(
         self, request_data: dict[str, Any]
     ) -> TextGenStreamingSynapse:
-        messages = request_data["messages"]
-        return TextGenStreamingSynapse(
-            roles=[m["role"] for m in messages],
-            messages=[m["content"] for m in messages],
-        )
+        roles, messages = _extract_messages(request_data)
+        return TextGenStreamingSynapse(roles=roles, messages=messages)
 
     def format_stream_chunk(
         self, chunk: str, chunk_id: str, model: str, created: int,
@@ -165,16 +132,6 @@ class SN1TextAdapter(BaseAdapter):
             ],
         }
         return f"data: {json.dumps(data)}\n\ndata: [DONE]\n\n"
-
-    def sanitize_text(self, text: str) -> str:
-        """Sanitize a single text chunk (reuses dangerous-tag regexes)."""
-        if not isinstance(text, str):
-            return str(text) if text is not None else ""
-        text = self._DANGEROUS_CONTENT_RE.sub("", text)
-        text = self._DANGEROUS_TAGS_RE.sub("", text)
-        text = self._EVENT_HANDLER_RE.sub("", text)
-        text = self._JS_PROTOCOL_RE.sub("", text)
-        return text.replace("\x00", "")
 
     def get_config(self) -> AdapterConfig:
         return AdapterConfig(

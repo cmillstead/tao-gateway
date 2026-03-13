@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -17,6 +18,13 @@ from gateway.routing.selector import MinerSelector
 
 logger = structlog.get_logger()
 
+MINER_UID_PREFIX_LEN = 8
+
+
+def generate_completion_id() -> str:
+    """Generate a unique OpenAI-compatible completion ID."""
+    return f"chatcmpl-{uuid.uuid4().hex[:24]}"
+
 
 @dataclass
 class AdapterConfig:
@@ -30,6 +38,38 @@ class BaseAdapter(ABC):
     """Fat base class — handles miner selection, Dendrite query, response
     validation, sanitization. Concrete adapters provide only ~50 lines:
     to_synapse(), from_response(), sanitize_output(), get_config()."""
+
+    # Dangerous HTML tags that could execute code or load external content
+    _DANGEROUS_TAGS_RE = re.compile(
+        r"<\s*/?\s*(?:script|iframe|object|embed|form|input|button|textarea"
+        r"|select|style|link|meta|base|applet|svg)\b[^>]*>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    # Content between script/style tags (strip payload, not just the tags)
+    _DANGEROUS_CONTENT_RE = re.compile(
+        r"<\s*(?:script|style)\b[^>]*>.*?<\s*/\s*(?:script|style)\s*>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    # Event handler attributes on any tag (onerror, onload, onclick, etc.)
+    _EVENT_HANDLER_RE = re.compile(
+        r"<([^>]*?\s)on\w+\s*=[^>]*>",
+        re.IGNORECASE,
+    )
+    # javascript: protocol in attributes
+    _JS_PROTOCOL_RE = re.compile(
+        r"<[^>]*\s(?:href|src|action)\s*=\s*[\"']?\s*javascript\s*:[^>]*>",
+        re.IGNORECASE,
+    )
+
+    def sanitize_text(self, text: str) -> str:
+        """Sanitize a single text string using shared dangerous-tag regexes."""
+        if not isinstance(text, str):
+            return str(text) if text is not None else ""
+        text = self._DANGEROUS_CONTENT_RE.sub("", text)
+        text = self._DANGEROUS_TAGS_RE.sub("", text)
+        text = self._EVENT_HANDLER_RE.sub("", text)
+        text = self._JS_PROTOCOL_RE.sub("", text)
+        return text.replace("\x00", "")
 
     @abstractmethod
     def to_synapse(self, request_data: dict[str, Any]) -> bt.Synapse:
@@ -65,7 +105,7 @@ class BaseAdapter(ABC):
 
         # 1. Select miner (raises SubnetUnavailableError if none)
         axon = miner_selector.select_miner(config.netuid)
-        miner_uid = axon.hotkey[:8]  # Safe prefix for logging/headers
+        miner_uid = axon.hotkey[:MINER_UID_PREFIX_LEN]  # Safe prefix for logging/headers
 
         # 2. Build synapse
         synapse = self.to_synapse(request_data)
@@ -160,18 +200,39 @@ class BaseAdapter(ABC):
         self,
         request_data: dict[str, Any],
         dendrite: bt.Dendrite,
+        miner_selector: MinerSelector,
+        is_disconnected: Any = None,
+    ) -> tuple[dict[str, str], AsyncGenerator[str, None]]:
+        """Streaming request lifecycle.
+
+        Returns (gateway_headers, sse_generator) so the caller gets
+        consistent headers without pre-selecting the miner.
+        """
+        config = self.get_config()
+        axon = miner_selector.select_miner(config.netuid)
+        miner_uid = axon.hotkey[:MINER_UID_PREFIX_LEN]
+
+        headers = {
+            "X-TaoGateway-Miner-UID": miner_uid,
+            "X-TaoGateway-Subnet": config.subnet_name,
+        }
+
+        return headers, self._stream_generator(
+            request_data, dendrite, axon, miner_uid, is_disconnected,
+        )
+
+    async def _stream_generator(
+        self,
+        request_data: dict[str, Any],
+        dendrite: bt.Dendrite,
         axon: Any,
         miner_uid: str,
         is_disconnected: Any = None,
     ) -> AsyncGenerator[str, None]:
-        """Streaming request lifecycle. Yields SSE-formatted strings.
-
-        The caller must select the miner (axon/miner_uid) and pass them in
-        so the same miner is used for both response headers and the query.
-        """
+        """Internal streaming generator. Yields SSE-formatted strings."""
         config = self.get_config()
         start_time = time.monotonic()
-        chunk_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+        chunk_id = generate_completion_id()
         created = int(time.time())
         model = str(request_data.get("model", "unknown"))
 

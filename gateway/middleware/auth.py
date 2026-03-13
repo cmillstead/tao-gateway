@@ -5,13 +5,12 @@ import structlog
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.database import get_db
 from gateway.core.exceptions import AuthenticationError
-from gateway.core.redis import get_redis, reset_redis
+from gateway.core.redis import try_get_redis
 from gateway.core.security import ph
 from gateway.models.api_key import ApiKey
 from gateway.services.api_key_service import API_KEY_PREFIX_LENGTH
@@ -20,6 +19,8 @@ from gateway.services.auth_service import verify_jwt_token
 logger = structlog.get_logger()
 security = HTTPBearer(auto_error=False)
 
+_API_KEY_CACHE_TTL = 60
+
 
 @dataclass(frozen=True, slots=True)
 class ApiKeyInfo:
@@ -27,21 +28,6 @@ class ApiKeyInfo:
 
     key_id: uuid.UUID
     org_id: uuid.UUID
-
-
-async def _try_get_redis() -> Redis | None:
-    """Best-effort Redis connection.  Returns None when unavailable.
-
-    On connection failure, resets the cached client so the next request
-    triggers a fresh reconnection attempt instead of returning a broken
-    client forever.
-    """
-    try:
-        return await get_redis()
-    except Exception:
-        logger.warning("redis_unavailable_for_auth")
-        await reset_redis()
-        return None
 
 
 async def get_current_api_key(
@@ -59,9 +45,10 @@ async def get_current_api_key(
 
     token = credentials.credentials
     prefix = token[:API_KEY_PREFIX_LENGTH]
+    redacted = prefix[:12] + "****"
     cache_key = f"api_key:{prefix}"
 
-    redis = await _try_get_redis()
+    redis = await try_get_redis(reset_on_failure=True)
     tombstone_key = f"api_key_revoked:{prefix}"
 
     # Check Redis cache (tombstone + cached credentials)
@@ -74,19 +61,19 @@ async def get_current_api_key(
         except AuthenticationError:
             raise
         except Exception:
-            logger.warning("redis_tombstone_check_failed", prefix=prefix[:12] + "****")
+            logger.warning("redis_tombstone_check_failed", prefix=redacted)
 
         try:
             cached = await redis.get(cache_key)
         except Exception:
-            logger.warning("redis_get_failed", prefix=prefix[:12] + "****")
+            logger.warning("redis_get_failed", prefix=redacted)
             cached = None
 
         if cached is not None:
             try:
                 cached_str = cached.decode()
             except UnicodeDecodeError:
-                logger.warning("api_key_cache_corrupt", prefix=prefix[:12] + "****")
+                logger.warning("api_key_cache_corrupt", prefix=redacted)
                 await redis.delete(cache_key)
                 cached_str = None
 
@@ -97,10 +84,10 @@ async def get_current_api_key(
                     ph.verify(cached_hash, token)
                     return ApiKeyInfo(key_id=uuid.UUID(key_id_str), org_id=uuid.UUID(org_id_str))
                 except VerifyMismatchError as exc:
-                    logger.warning("api_key_hash_mismatch", prefix=prefix[:12] + "****")
+                    logger.warning("api_key_hash_mismatch", prefix=redacted)
                     raise AuthenticationError("Invalid API key") from exc
                 except (ValueError, IndexError):
-                    logger.warning("api_key_cache_corrupt", prefix=prefix[:12] + "****")
+                    logger.warning("api_key_cache_corrupt", prefix=redacted)
                     await redis.delete(cache_key)
 
     # Cache miss (or Redis unavailable) — look up in DB
@@ -111,13 +98,13 @@ async def get_current_api_key(
         )
     )
     if key_record is None:
-        logger.warning("api_key_not_found", prefix=prefix[:12] + "****")
+        logger.warning("api_key_not_found", prefix=redacted)
         raise AuthenticationError("Invalid API key")
 
     try:
         ph.verify(key_record.key_hash, token)
     except VerifyMismatchError as exc:
-        logger.warning("api_key_hash_mismatch", prefix=prefix[:12] + "****")
+        logger.warning("api_key_hash_mismatch", prefix=redacted)
         raise AuthenticationError("Invalid API key") from exc
 
     # Best-effort rehash — don't fail the request if this errors
@@ -128,16 +115,16 @@ async def get_current_api_key(
             key_record.key_hash = current_hash
             await db.commit()
     except Exception:
-        logger.warning("api_key_rehash_failed", prefix=prefix[:12] + "****")
+        logger.warning("api_key_rehash_failed", prefix=redacted)
         await db.rollback()
 
     # Best-effort cache population
     if redis is not None:
         cache_value = f"{current_hash}:{key_record.id}:{key_record.org_id}"
         try:
-            await redis.set(cache_key, cache_value, ex=60)
+            await redis.set(cache_key, cache_value, ex=_API_KEY_CACHE_TTL)
         except Exception:
-            logger.warning("redis_set_failed", prefix=prefix[:12] + "****")
+            logger.warning("redis_set_failed", prefix=redacted)
 
     return ApiKeyInfo(key_id=key_record.id, org_id=key_record.org_id)
 
