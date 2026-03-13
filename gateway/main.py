@@ -56,19 +56,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         sync_interval=settings.metagraph_sync_interval_seconds,
     )
     metagraph_manager.register_subnet(settings.sn1_netuid)
-    metagraph_manager.start()
+    await metagraph_manager.start()
+
+    if metagraph_manager.get_metagraph(settings.sn1_netuid) is None:
+        logger.error(
+            "startup_metagraph_empty",
+            netuid=settings.sn1_netuid,
+        )
 
     miner_selector = MinerSelector(metagraph_manager)
 
     app.state.dendrite = dendrite
     app.state.metagraph_manager = metagraph_manager
     app.state.miner_selector = miner_selector
-
-    if metagraph_manager.get_metagraph(settings.sn1_netuid) is None:
-        logger.warning(
-            "startup_metagraph_empty",
-            netuid=settings.sn1_netuid,
-        )
 
     logger.info("startup_bittensor_ok")
 

@@ -17,10 +17,14 @@ class MinerSelector:
         """Select the top miner by incentive score, excluding ineligible miners.
 
         Raises SubnetUnavailableError if no eligible miners are found.
+
+        Note: This is synchronous and runs on the event loop. The iteration
+        over ~1024 neurons is fast enough for MVP (50 concurrent requests).
+        Phase 2 should cache the sorted eligible list, invalidated on sync.
         """
         metagraph = self._metagraph_manager.get_metagraph(netuid)
         if metagraph is None:
-            raise SubnetUnavailableError(f"sn{netuid}")
+            raise SubnetUnavailableError(f"sn{netuid}: no metagraph")
 
         eligible: list[tuple[int, float, bt.AxonInfo]] = []
         for uid in range(int(metagraph.n)):
@@ -38,7 +42,7 @@ class MinerSelector:
             eligible.append((uid, incentive, axon))
 
         if not eligible:
-            raise SubnetUnavailableError(f"sn{netuid}")
+            raise SubnetUnavailableError(f"sn{netuid}: no eligible miners")
 
         eligible.sort(key=lambda x: x[1], reverse=True)
         best_uid, best_incentive, best_axon = eligible[0]

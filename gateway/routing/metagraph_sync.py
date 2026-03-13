@@ -10,6 +10,7 @@ logger = structlog.get_logger()
 
 
 _DEFAULT_STALENESS_SECONDS = 300  # 5 minutes
+_ESCALATION_THRESHOLD = 5  # consecutive failures before logging at error level
 
 
 @dataclass
@@ -51,7 +52,11 @@ class MetagraphManager:
         return self._subnets.get(netuid)
 
     def get_all_states(self) -> dict[int, SubnetMetagraphState]:
-        """Return all registered subnet states (read-only view for health reporting)."""
+        """Return all registered subnet states for health reporting.
+
+        Note: returned SubnetMetagraphState objects are shared references —
+        callers should treat them as read-only.
+        """
         return dict(self._subnets)
 
     async def sync_all(self) -> None:
@@ -74,23 +79,28 @@ class MetagraphManager:
             except Exception as exc:
                 state.consecutive_failures += 1
                 state.last_sync_error = str(exc)
-                logger.warning(
+                log = (
+                    logger.error
+                    if state.consecutive_failures >= _ESCALATION_THRESHOLD
+                    else logger.warning
+                )
+                log(
                     "metagraph_sync_failed",
                     netuid=netuid,
                     error=str(exc),
                     consecutive_failures=state.consecutive_failures,
                 )
 
-    async def start_sync_loop(self) -> None:
-        """Start background sync loop. Call as asyncio.create_task()."""
-        await self.sync_all()
+    async def _sync_loop(self) -> None:
+        """Background loop that syncs periodically. Does NOT run initial sync."""
         while True:
             await asyncio.sleep(self._sync_interval)
             await self.sync_all()
 
-    def start(self) -> None:
-        """Create background task for sync loop."""
-        self._sync_task = asyncio.create_task(self.start_sync_loop())
+    async def start(self) -> None:
+        """Run initial sync (awaited, so failures are visible) then start background loop."""
+        await self.sync_all()
+        self._sync_task = asyncio.create_task(self._sync_loop())
 
     async def stop(self) -> None:
         """Cancel sync task on shutdown."""

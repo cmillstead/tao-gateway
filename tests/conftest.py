@@ -26,6 +26,16 @@ _bt_patches = [
 for p in _bt_patches:
     p.start()
 
+import atexit as _atexit  # noqa: E402
+
+
+def _stop_bt_patches() -> None:
+    for p in _bt_patches:
+        p.stop()
+
+
+_atexit.register(_stop_bt_patches)
+
 from collections.abc import AsyncGenerator  # noqa: E402
 
 import pytest  # noqa: E402

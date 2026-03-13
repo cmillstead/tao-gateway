@@ -54,7 +54,7 @@ def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | N
             is_stale=state.is_stale,
             sync_error=state.last_sync_error,
         )
-    return result if result else None
+    return result
 
 
 @router.get("/v1/health", response_model=HealthResponse)
