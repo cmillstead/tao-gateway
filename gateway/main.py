@@ -59,15 +59,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     metagraph_manager.register_subnet(settings.sn1_netuid)
     await metagraph_manager.start()
 
-    if metagraph_manager.get_metagraph(settings.sn1_netuid) is None:
-        logger.error(
-            "startup_metagraph_empty",
-            netuid=settings.sn1_netuid,
-        )
-        raise RuntimeError(
-            f"Initial metagraph sync failed for SN{settings.sn1_netuid} — "
-            "cannot route requests without metagraph data"
-        )
+    try:
+        if metagraph_manager.get_metagraph(settings.sn1_netuid) is None:
+            logger.error(
+                "startup_metagraph_empty",
+                netuid=settings.sn1_netuid,
+            )
+            raise RuntimeError(
+                f"Initial metagraph sync failed for SN{settings.sn1_netuid} — "
+                "cannot route requests without metagraph data"
+            )
+    except BaseException:
+        await metagraph_manager.stop()
+        raise
 
     miner_selector = MinerSelector(metagraph_manager)
 
@@ -79,10 +83,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     yield
 
-    # Shutdown
-    await metagraph_manager.stop()
-    await dendrite.aclose_session()
-    await engine.dispose()
+    # Shutdown — each step guarded so one failure doesn't skip the rest
+    try:
+        await metagraph_manager.stop()
+    except Exception:
+        logger.warning("shutdown_metagraph_manager_failed", exc_info=True)
+    try:
+        await dendrite.aclose_session()
+    except Exception:
+        logger.warning("shutdown_dendrite_close_failed", exc_info=True)
+    try:
+        await engine.dispose()
+    except Exception:
+        logger.warning("shutdown_engine_dispose_failed", exc_info=True)
     await close_redis()
 
 

@@ -24,8 +24,30 @@ router = APIRouter()
 # vector — each call makes DB + Redis round-trips that could exhaust the
 # connection pool under flood.  Only healthy responses are cached so that
 # recovery is detected immediately.
+# Note: concurrent requests may all miss the cache simultaneously before one
+# populates it — this is a benign race in single-threaded asyncio and self-heals
+# once the first response completes.
 _health_cache: dict[str, Any] = {}
 _HEALTH_CACHE_TTL = 5.0
+
+_SYNC_ERROR_CATEGORIES: dict[str, str] = {
+    "timeout": "timeout",
+    "timed out": "timeout",
+    "connection": "connection_error",
+    "unreachable": "connection_error",
+    "refused": "connection_error",
+}
+
+
+def _sanitize_sync_error(raw_error: str | None) -> str | None:
+    """Categorize raw exception strings to avoid leaking internal details."""
+    if raw_error is None:
+        return None
+    lower = raw_error.lower()
+    for keyword, category in _SYNC_ERROR_CATEGORIES.items():
+        if keyword in lower:
+            return category
+    return "sync_error"
 
 
 def clear_health_cache() -> None:
@@ -56,7 +78,7 @@ def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | N
             netuid=netuid,
             last_sync=last_sync,
             is_stale=state.is_stale,
-            sync_error=state.last_sync_error,
+            sync_error=_sanitize_sync_error(state.last_sync_error),
         )
     return result
 

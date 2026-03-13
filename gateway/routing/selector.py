@@ -2,7 +2,7 @@ import bittensor as bt
 import structlog
 
 from gateway.core.exceptions import SubnetUnavailableError
-from gateway.routing.metagraph_sync import MetagraphManager
+from gateway.routing.metagraph_sync import MetagraphManager, SubnetMetagraphState
 
 logger = structlog.get_logger()
 
@@ -16,7 +16,7 @@ class MinerSelector:
 
     def __init__(self, metagraph_manager: MetagraphManager) -> None:
         self._metagraph_manager = metagraph_manager
-        # Cache: netuid -> (metagraph_id, sorted_eligible_list)
+        # Cache: netuid -> (sync_generation, sorted_eligible_list)
         self._cache: dict[int, tuple[int, list[tuple[int, float, bt.AxonInfo]]]] = {}
 
     def _build_eligible(
@@ -45,17 +45,20 @@ class MinerSelector:
 
         Raises SubnetUnavailableError if no eligible miners are found.
         """
-        metagraph = self._metagraph_manager.get_metagraph(netuid)
-        if metagraph is None:
+        state: SubnetMetagraphState | None = self._metagraph_manager.get_state(netuid)
+        if state is None or state.metagraph is None:
             raise SubnetUnavailableError(f"sn{netuid}", reason="no_metagraph")
 
-        # Use cached eligible list if metagraph hasn't changed
+        metagraph = state.metagraph
+
+        # Use cached eligible list if metagraph hasn't been re-synced.
+        # sync_generation is a monotonic counter — immune to id() reuse after GC.
         cached = self._cache.get(netuid)
-        if cached is not None and cached[0] == id(metagraph):
+        if cached is not None and cached[0] == state.sync_generation:
             eligible = cached[1]
         else:
             eligible = self._build_eligible(metagraph)
-            self._cache[netuid] = (id(metagraph), eligible)
+            self._cache[netuid] = (state.sync_generation, eligible)
 
         if not eligible:
             raise SubnetUnavailableError(f"sn{netuid}", reason="no_eligible_miners")

@@ -170,11 +170,11 @@ class TestMetagraphManager:
         def slow_metagraph(netuid: int) -> None:
             import time as _t
 
-            _t.sleep(1)  # longer than timeout
+            _t.sleep(0.2)  # longer than timeout
 
         mock_subtensor.metagraph = slow_metagraph
         mgr = MetagraphManager(
-            subtensor=mock_subtensor, sync_interval=120, sync_timeout=0.05
+            subtensor=mock_subtensor, sync_interval=120, sync_timeout=0.01
         )
         mgr.register_subnet(1)
         await mgr.sync_all()
