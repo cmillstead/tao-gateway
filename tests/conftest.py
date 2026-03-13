@@ -62,9 +62,15 @@ _sn1_state = _test_metagraph_manager.get_state(1)
 assert _sn1_state is not None
 _sn1_state.metagraph = _mock_metagraph
 _sn1_state.last_sync_time = _time.time()
+from gateway.subnets.registry import AdapterRegistry  # noqa: E402
+from gateway.subnets.sn1_text import SN1TextAdapter  # noqa: E402
+
 app.state.metagraph_manager = _test_metagraph_manager
 app.state.miner_selector = MinerSelector(_test_metagraph_manager)
 app.state.dendrite = _mock_bt_dendrite
+_test_adapter_registry = AdapterRegistry()
+_test_adapter_registry.register(SN1TextAdapter(), model_names=["tao-sn1"])
+app.state.adapter_registry = _test_adapter_registry
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -100,14 +106,29 @@ def _reset_metagraph_state() -> None:
         state.consecutive_failures = 0
 
 
+def _reset_app_state() -> None:
+    """Reset app.state singletons to module-level defaults."""
+    app.state.miner_selector = MinerSelector(_test_metagraph_manager)
+    app.state.dendrite = _mock_bt_dendrite
+    app.state.adapter_registry = _test_adapter_registry
+
+
 @pytest.fixture(autouse=True)
 async def _clean_state() -> AsyncGenerator[None, None]:
     """Truncate DB tables, flush Redis, and reset metagraph state."""
     await _flush_test_state()
     _reset_metagraph_state()
+    _reset_app_state()
     yield
     await _flush_test_state()
     _reset_metagraph_state()
+    _reset_app_state()
+
+
+@pytest.fixture
+def test_app():
+    """Provide the FastAPI app instance for direct state access in tests."""
+    return app
 
 
 @pytest.fixture
