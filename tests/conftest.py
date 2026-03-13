@@ -1,4 +1,5 @@
 import os
+from unittest.mock import MagicMock, patch
 
 # Hard-override to prevent tests ever running against production.
 # These MUST be set before any gateway imports.
@@ -7,6 +8,23 @@ os.environ["DEBUG"] = "true"
 
 _db_url = os.environ["DATABASE_URL"]
 assert "test" in _db_url, f"Refusing to run tests against non-test database: {_db_url}"
+
+# Mock Bittensor SDK before gateway imports — prevents real wallet/network access
+_mock_bt_wallet = MagicMock()
+_mock_bt_subtensor = MagicMock()
+_mock_bt_dendrite = MagicMock()
+# Make metagraph sync succeed with a minimal fake metagraph
+_mock_metagraph = MagicMock()
+_mock_metagraph.n = 0
+_mock_bt_subtensor.metagraph.return_value = _mock_metagraph
+
+_bt_patches = [
+    patch("gateway.core.bittensor.bt.Wallet", return_value=_mock_bt_wallet),
+    patch("gateway.core.bittensor.bt.Subtensor", return_value=_mock_bt_subtensor),
+    patch("gateway.core.bittensor.bt.Dendrite", return_value=_mock_bt_dendrite),
+]
+for p in _bt_patches:
+    p.start()
 
 from collections.abc import AsyncGenerator  # noqa: E402
 
@@ -19,7 +37,24 @@ from gateway.core.database import get_engine  # noqa: E402
 from gateway.core.redis import get_redis  # noqa: E402
 from gateway.main import app  # noqa: E402
 from gateway.models import Base  # noqa: E402
+from gateway.routing.metagraph_sync import MetagraphManager  # noqa: E402
+from gateway.routing.selector import MinerSelector  # noqa: E402
 from gateway.services.auth_service import create_jwt_token  # noqa: E402
+
+# Set up mock Bittensor state on app.state so health endpoint can access it
+# (lifespan does not run with ASGITransport test client)
+_test_metagraph_manager = MetagraphManager(subtensor=_mock_bt_subtensor, sync_interval=120)
+_test_metagraph_manager.register_subnet(1)
+# Mark the subnet as freshly synced so health endpoint doesn't report stale
+import time as _time  # noqa: E402
+
+_sn1_state = _test_metagraph_manager.get_state(1)
+assert _sn1_state is not None
+_sn1_state.metagraph = _mock_metagraph
+_sn1_state.last_sync_time = _time.time()
+app.state.metagraph_manager = _test_metagraph_manager
+app.state.miner_selector = MinerSelector(_test_metagraph_manager)
+app.state.dendrite = _mock_bt_dendrite
 
 
 @pytest.fixture(scope="session", autouse=True)

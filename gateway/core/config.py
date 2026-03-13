@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # Bittensor
     wallet_name: str = "default"
     wallet_path: str = "~/.bittensor/wallets"
+    hotkey_name: str = "default"
+    subtensor_network: str = "finney"
+    sn1_netuid: int = 1
+    metagraph_sync_interval_seconds: int = 120
+    dendrite_timeout_seconds: int = 30
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
