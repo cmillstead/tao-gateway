@@ -15,6 +15,8 @@ from gateway.core.redis import close_redis, get_redis
 from gateway.middleware.error_handler import gateway_exception_handler
 from gateway.routing.metagraph_sync import MetagraphManager
 from gateway.routing.selector import MinerSelector
+from gateway.subnets.registry import AdapterRegistry
+from gateway.subnets.sn1_text import SN1TextAdapter
 
 # Configure structlog before any logger calls — including module-level init
 setup_logging()
@@ -76,15 +78,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         miner_selector = MinerSelector(metagraph_manager)
 
+        adapter_registry = AdapterRegistry()
+        adapter_registry.register(SN1TextAdapter(), model_names=["tao-sn1"])
+
         app.state.dendrite = dendrite
         app.state.metagraph_manager = metagraph_manager
         app.state.miner_selector = miner_selector
+        app.state.adapter_registry = adapter_registry
 
         logger.info("startup_bittensor_ok")
     else:
         logger.info("startup_bittensor_skipped")
         dendrite = None
         metagraph_manager = None
+        app.state.adapter_registry = AdapterRegistry()
 
     yield
 
