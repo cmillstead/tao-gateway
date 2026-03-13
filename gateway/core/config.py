@@ -70,6 +70,6 @@ def get_settings() -> Settings:
     return Settings()
 
 
-# Module-level convenience alias — uses cached singleton.
-# Safe because lru_cache defers instantiation until first access.
+# Module-level convenience alias — instantiated at first import.
+# lru_cache ensures only one Settings instance exists across the process.
 settings = get_settings()

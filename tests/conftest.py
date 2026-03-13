@@ -39,7 +39,7 @@ async def _flush_test_state() -> None:
     table_names = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
     async with engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
-    for pattern in ("auth_rate:*", "api_key:*"):
+    for pattern in ("auth_rate:*", "api_key:*", "api_key_revoked:*"):
         keys = [k async for k in redis.scan_iter(pattern, count=1000)]
         if keys:
             await redis.delete(*keys)

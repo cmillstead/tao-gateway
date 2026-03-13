@@ -7,6 +7,7 @@ from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.core.exceptions import GatewayError
 from gateway.core.security import ph
 from gateway.models.api_key import ApiKey
 
@@ -38,8 +39,6 @@ async def create_api_key(
         )
     )
     if active_count is not None and active_count >= MAX_KEYS_PER_ORG:
-        from gateway.core.exceptions import GatewayError
-
         raise GatewayError(
             f"Maximum of {MAX_KEYS_PER_ORG} active API keys per organization",
             status_code=422,
@@ -56,8 +55,11 @@ async def create_api_key(
 
 async def list_api_keys(
     org_id: uuid.UUID, db: AsyncSession, *, limit: int = 50, offset: int = 0
-) -> list[ApiKey]:
-    """List API keys for an organization with pagination."""
+) -> tuple[list[ApiKey], int]:
+    """List API keys for an organization with pagination. Returns (keys, total_count)."""
+    total = await db.scalar(
+        select(func.count()).select_from(ApiKey).where(ApiKey.org_id == org_id)
+    ) or 0
     result = await db.scalars(
         select(ApiKey)
         .where(ApiKey.org_id == org_id)
@@ -65,35 +67,40 @@ async def list_api_keys(
         .limit(limit)
         .offset(offset)
     )
-    return list(result.all())
+    return list(result.all()), total
 
 
 async def revoke_api_key(
-    key_id: uuid.UUID, org_id: uuid.UUID, db: AsyncSession, redis: Redis
+    key_id: uuid.UUID, org_id: uuid.UUID, db: AsyncSession, redis: Redis | None
 ) -> ApiKey | None:
     """Revoke an API key and invalidate its Redis cache entry.
 
-    Deletes the cache entry before committing the DB change so that
-    concurrent requests cannot use a stale cache hit for a revoked key.
+    Sets a separate tombstone key so concurrent auth requests that
+    re-populate the cache cannot overwrite the revocation signal.
+    Gracefully handles Redis being unavailable.
     """
     key = await db.scalar(
-        select(ApiKey).where(ApiKey.id == key_id, ApiKey.org_id == org_id)
+        select(ApiKey).where(
+            ApiKey.id == key_id, ApiKey.org_id == org_id, ApiKey.is_active.is_(True)
+        )
     )
     if key is None:
         return None
-
-    cache_key = f"api_key:{key.prefix}"
 
     key.is_active = False
     await db.commit()
     await db.refresh(key)
 
-    # Set tombstone AFTER DB commit so concurrent requests that re-cache
-    # during the commit window are immediately overwritten.  Tombstone TTL
-    # matches normal cache TTL (60s) to prevent stale re-population.
-    try:
-        await redis.set(cache_key, "__revoked__", ex=60)
-    except Exception:
-        logger.warning("revoke_cache_tombstone_failed", key_id=str(key_id))
+    # Best-effort cache invalidation — revocation is DB-authoritative.
+    if redis is not None:
+        cache_key = f"api_key:{key.prefix}"
+        tombstone_key = f"api_key_revoked:{key.prefix}"
+        try:
+            async with redis.pipeline(transaction=True) as pipe:
+                pipe.set(tombstone_key, "1", ex=120)
+                pipe.delete(cache_key)
+                await pipe.execute()
+        except Exception:
+            logger.warning("revoke_cache_tombstone_failed", key_id=str(key_id))
 
     return key

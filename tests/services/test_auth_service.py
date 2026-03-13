@@ -1,14 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from argon2 import PasswordHasher
 from jose import jwt
 
 from gateway.core.config import settings
 from gateway.core.exceptions import AuthenticationError
+from gateway.core.security import ph
 from gateway.services.auth_service import create_jwt_token, verify_jwt_token
-
-ph = PasswordHasher()
 
 
 def test_password_hashing_round_trip() -> None:

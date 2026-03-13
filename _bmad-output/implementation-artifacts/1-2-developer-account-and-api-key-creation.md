@@ -496,6 +496,21 @@ Claude Opus 4.6
 - 2026-03-12: Sixth adversarial code review — fixed 1 HIGH (revoke_api_key cache delete before DB commit) + 3 MEDIUM (no pagination on list_api_keys, cache corruption returns 500 instead of DB fallback, rehash commit failure kills valid request). 43/43 tests pass.
 - 2026-03-12: Seventh adversarial code review (combined 1.1+1.2) — fixed 3 HIGH (missing revoke endpoint, revoke cache race TOCTOU, no pagination bounds) + 2 HIGH (no per-org key limit, signup IntegrityError session state) + 2 MEDIUM (prefix magic number, test Redis cleanup O(N)). Added revoke endpoint, pagination validation, per-org key limit, expired JWT test, revoke tests. 49/49 tests pass.
 - 2026-03-12: Eighth adversarial code review (combined 1.1+1.2) — fixed 7 HIGH (cache auth bypass, revoke TOCTOU tombstone, updated_at DB triggers, lazy Settings/engine, Redis circuit breaker, health test no-op, python-jose noted) + 10 MEDIUM (JWT min length, login logging, log redaction depth, startup checks, cross-tenant test, wrong-secret JWT test, conftest hard-override, Dockerfile multi-stage, alembic placeholder, revoke schema) + 8 LOW. New migration 1f760edb6b6a adds Postgres triggers for updated_at. 53/53 tests pass.
+- 2026-03-12: Ninth adversarial code review (combined 1.1+1.2) — fixed 3 HIGH (Redis failure total outage → fail-open rate limiter + optional Redis in auth, tombstone TOCTOU → separate tombstone key, no reconnection → reset_redis()) + 4 MEDIUM (test PasswordHasher pinned params, revoke filters is_active, config comment, rate limit unknown IP) + 3 LOW (lazy import, pagination total, sa import). 54/54 tests pass.
+
+**Ninth Adversarial Code Review Fixes (2026-03-12):**
+- gateway/api/auth.py (modified) — rate limiter fails open on Redis failure, skips rate limit for clients without IP instead of sharing bucket
+- gateway/middleware/auth.py (modified) — Redis now optional via _try_get_redis(), falls through to DB-only validation; tombstone check uses separate key (api_key_revoked:{prefix})
+- gateway/core/redis.py (modified) — added reset_redis() for reconnection after post-startup Redis failure
+- gateway/services/api_key_service.py (modified) — two-key tombstone pattern (separate tombstone key + cache delete via pipeline); revoke filters is_active; top-level GatewayError import
+- gateway/api/api_keys.py (modified) — revoke gets Redis best-effort; list returns ApiKeyListResponse with total count
+- gateway/schemas/api_keys.py (modified) — added ApiKeyListResponse with items + total
+- gateway/models/api_key.py (modified) — replaced import sqlalchemy as sa with from sqlalchemy import text
+- gateway/core/config.py (modified) — fixed misleading comment about lazy instantiation
+- tests/services/test_auth_service.py (modified) — uses pinned ph from gateway.core.security
+- tests/middleware/test_auth_middleware.py (modified) — all unit tests use monkeypatch for _try_get_redis; added test_api_key_redis_down_falls_through_to_db
+- tests/api/test_api_keys.py (modified) — list assertions use items/total response shape
+- tests/conftest.py (modified) — cleanup includes api_key_revoked:* tombstone keys
 
 ### File List
 - gateway/models/base.py (new) — DeclarativeBase shared by all models

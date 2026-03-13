@@ -22,5 +22,10 @@ class ApiKeyListItem(BaseModel):
     created_at: datetime
 
 
+class ApiKeyListResponse(BaseModel):
+    items: list[ApiKeyListItem]
+    total: int
+
+
 class ApiKeyRevokeResponse(BaseModel):
     message: str

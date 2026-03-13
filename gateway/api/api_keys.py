@@ -2,7 +2,6 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, Query
-from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.status import HTTP_201_CREATED
 
@@ -14,6 +13,7 @@ from gateway.schemas.api_keys import (
     ApiKeyCreateRequest,
     ApiKeyCreateResponse,
     ApiKeyListItem,
+    ApiKeyListResponse,
     ApiKeyRevokeResponse,
 )
 from gateway.services import api_key_service
@@ -38,23 +38,26 @@ async def create_api_key(
     )
 
 
-@router.get("/api-keys", response_model=list[ApiKeyListItem])
+@router.get("/api-keys", response_model=ApiKeyListResponse)
 async def list_api_keys(
     org_id: uuid.UUID = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-) -> list[ApiKeyListItem]:
-    keys = await api_key_service.list_api_keys(org_id, db, limit=limit, offset=offset)
-    return [
-        ApiKeyListItem(
-            id=str(k.id),
-            prefix=k.prefix,
-            is_active=k.is_active,
-            created_at=k.created_at,
-        )
-        for k in keys
-    ]
+) -> ApiKeyListResponse:
+    keys, total = await api_key_service.list_api_keys(org_id, db, limit=limit, offset=offset)
+    return ApiKeyListResponse(
+        items=[
+            ApiKeyListItem(
+                id=str(k.id),
+                prefix=k.prefix,
+                is_active=k.is_active,
+                created_at=k.created_at,
+            )
+            for k in keys
+        ],
+        total=total,
+    )
 
 
 @router.delete("/api-keys/{key_id}", status_code=200, response_model=ApiKeyRevokeResponse)
@@ -62,8 +65,11 @@ async def revoke_api_key(
     key_id: uuid.UUID,
     org_id: uuid.UUID = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
 ) -> ApiKeyRevokeResponse:
+    try:
+        redis = await get_redis()
+    except Exception:
+        redis = None  # type: ignore[assignment]
     key = await api_key_service.revoke_api_key(key_id, org_id, db, redis)
     if key is None:
         raise GatewayError("API key not found", status_code=404, error_type="not_found")

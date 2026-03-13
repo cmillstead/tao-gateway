@@ -39,6 +39,23 @@ async def get_redis() -> Redis:
     return redis_client
 
 
+async def reset_redis() -> None:
+    """Reset the cached client so the next call to get_redis() reconnects.
+
+    Call this when a Redis operation fails with a connection error to
+    trigger reconnection on the next request instead of returning a
+    broken client forever.
+    """
+    global redis_client  # noqa: PLW0603
+    async with _redis_lock:
+        if redis_client is not None:
+            try:
+                await redis_client.aclose()
+            except Exception:
+                pass
+            redis_client = None
+
+
 async def close_redis() -> None:
     global redis_client  # noqa: PLW0603
     async with _redis_lock:

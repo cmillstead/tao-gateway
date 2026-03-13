@@ -60,9 +60,11 @@ async def test_list_api_keys_masked(client: AsyncClient) -> None:
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
-    keys = response.json()
-    assert len(keys) >= 1
-    for key in keys:
+    data = response.json()
+    assert "items" in data
+    assert "total" in data
+    assert data["total"] >= 1
+    for key in data["items"]:
         assert "prefix" in key
         assert "key" not in key  # Full key should NOT be in list response
         assert "is_active" in key
@@ -97,7 +99,7 @@ async def test_revoke_api_key(client: AsyncClient) -> None:
 
     # Verify key shows as inactive in listing
     list_resp = await client.get("/dashboard/api-keys", headers=headers)
-    keys = list_resp.json()
+    keys = list_resp.json()["items"]
     revoked_key = next(k for k in keys if k["id"] == key_id)
     assert revoked_key["is_active"] is False
 
@@ -138,7 +140,7 @@ async def test_revoke_other_orgs_key_returns_404(client: AsyncClient) -> None:
 
     # Verify key is still active for org B
     list_resp = await client.get("/dashboard/api-keys", headers=headers_b)
-    keys = list_resp.json()
+    keys = list_resp.json()["items"]
     assert any(k["id"] == key_id_b and k["is_active"] for k in keys)
 
 
