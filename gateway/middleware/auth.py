@@ -1,0 +1,70 @@
+import uuid
+
+import structlog
+from argon2.exceptions import VerifyMismatchError
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from redis.asyncio import Redis
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from gateway.core.database import get_db
+from gateway.core.exceptions import AuthenticationError
+from gateway.core.redis import get_redis
+from gateway.core.security import ph
+from gateway.models.api_key import ApiKey
+from gateway.services.auth_service import verify_jwt_token
+
+logger = structlog.get_logger()
+security = HTTPBearer(auto_error=False)
+
+
+async def get_current_api_key(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+) -> uuid.UUID:
+    """Validate Bearer API key, return key ID. Uses Redis 60s TTL cache."""
+    if credentials is None:
+        raise AuthenticationError("Missing authorization header")
+
+    token = credentials.credentials
+    prefix = token[:20]
+    cache_key = f"api_key:{prefix}"
+
+    # Try Redis cache first
+    cached = await redis.get(cache_key)
+    if cached is not None:
+        return uuid.UUID(cached.decode())
+
+    # Cache miss — look up in DB
+    key_record = await db.scalar(
+        select(ApiKey).where(
+            ApiKey.prefix == prefix,
+            ApiKey.is_active.is_(True),
+        )
+    )
+    if key_record is None:
+        logger.warning("api_key_not_found", prefix=prefix[:12] + "****")
+        raise AuthenticationError("Invalid API key")
+
+    try:
+        ph.verify(key_record.key_hash, token)
+    except VerifyMismatchError as exc:
+        logger.warning("api_key_hash_mismatch", prefix=prefix[:12] + "****")
+        raise AuthenticationError("Invalid API key") from exc
+
+    # Cache the result: prefix → key_id, 60s TTL
+    await redis.set(cache_key, str(key_record.id), ex=60)
+    return key_record.id
+
+
+async def get_current_org_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> uuid.UUID:
+    """Validate JWT token, return org_id. Used for dashboard endpoints."""
+    if credentials is None:
+        raise AuthenticationError("Missing authorization header")
+
+    org_id_str = verify_jwt_token(credentials.credentials)
+    return uuid.UUID(org_id_str)
