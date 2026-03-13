@@ -490,6 +490,7 @@ Claude Opus 4.6
 - 2026-03-12: Story 1.2 implementation — DB models, auth service, API key service, auth middleware, error handler, API routes, 36 tests
 - 2026-03-12: Adversarial code review — fixed 3 HIGH (timing attack, no rate limiting, tests on prod DB) + 3 MEDIUM (false File List claim, unsafe fixture, no per-test isolation). 40/40 tests pass.
 - 2026-03-12: Second adversarial code review — fixed 2 HIGH (revoked key cache invalidation, password max_length DoS) + 4 MEDIUM (rate limit race condition, JWT UUID validation, env type constraint, rate limit test coverage). 42/42 tests pass.
+- 2026-03-12: Third adversarial code review — fixed 1 HIGH (rate limit broken behind proxy, is_active missing server_default) + 3 MEDIUM (email PII logged, LoginRequest min_length, test fixture DB cleanup). 42/42 tests pass.
 
 ### File List
 - gateway/models/base.py (new) — DeclarativeBase shared by all models
@@ -534,6 +535,15 @@ Claude Opus 4.6
 - gateway/api/auth.py (modified) — added per-IP Redis rate limiting (30/min) on auth endpoints to prevent brute force
 - gateway/core/config.py (modified) — added auth_rate_limit_per_minute setting
 - tests/conftest.py (modified) — tests now use tao_gateway_test database (not production), per-test DB truncation + Redis rate limit key cleanup for full isolation
+
+**Third Adversarial Code Review Fixes (2026-03-12):**
+- gateway/main.py (modified) — added SQLAlchemy engine disposal on shutdown
+- gateway/api/auth.py (modified) — rate limit uses X-Forwarded-For for real client IP behind proxy; removed email PII from log
+- gateway/models/api_key.py (modified) — added server_default=true to is_active column
+- gateway/schemas/auth.py (modified) — added min_length=8 to LoginRequest.password
+- docker-compose.yml (modified) — healthcheck uses configurable POSTGRES_USER
+- tests/conftest.py (modified) — DB truncation + api_key cache cleanup before and after each test
+- migrations/versions/a1b2c3d4e5f6_add_is_active_server_default.py (new) — adds server_default to is_active column
 
 **Second Adversarial Code Review Fixes (2026-03-12):**
 - gateway/schemas/auth.py (modified) — added max_length=128 on SignupRequest and LoginRequest password fields to prevent argon2 DoS

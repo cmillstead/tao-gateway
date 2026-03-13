@@ -470,6 +470,7 @@ Claude Opus 4.6
 ### Change Log
 - 2026-03-12: Initial project scaffold — all core infrastructure, health endpoint, Docker setup, tests, and quality tooling
 - 2026-03-12: Code review fixes — deleted root main.py, added Redis shutdown cleanup, env var credentials in docker-compose, fixed .env.example secrets, fixed pre-commit mypy strictness, added /docs + /redoc tests, fixed .python-version gitignore
+- 2026-03-12: Third adversarial code review — fixed 2 HIGH (SQLAlchemy engine disposal on shutdown, docker healthcheck hardcoded user) + 1 MEDIUM (test fixture crash recovery). 42/42 tests pass.
 
 ### File List
 - pyproject.toml (new)

@@ -20,7 +20,13 @@ async def _rate_limit_auth(
     redis: Redis = Depends(get_redis),
 ) -> None:
     """Simple per-IP rate limit on auth endpoints."""
-    client_ip = request.client.host if request.client else "unknown"
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    elif request.client:
+        client_ip = request.client.host
+    else:
+        client_ip = "unknown"
     key = f"auth_rate:{client_ip}"
     async with redis.pipeline(transaction=True) as pipe:
         pipe.incr(key)
@@ -42,7 +48,7 @@ async def signup(request: SignupRequest, db: AsyncSession = Depends(get_db)) -> 
         raise GatewayError(
             "Email already registered", status_code=409, error_type="conflict"
         ) from exc
-    logger.info("org_created", org_id=str(org.id), email=request.email)
+    logger.info("org_created", org_id=str(org.id))
     return SignupResponse(id=str(org.id), email=org.email, message="Account created successfully")
 
 

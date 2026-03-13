@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from gateway.api.router import router
 from gateway.core.config import settings
+from gateway.core.database import engine
 from gateway.core.exceptions import GatewayError
 from gateway.core.logging import setup_logging
 from gateway.core.redis import close_redis
@@ -15,6 +16,7 @@ from gateway.middleware.error_handler import gateway_exception_handler
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_logging()
     yield
+    await engine.dispose()
     await close_redis()
 
 
