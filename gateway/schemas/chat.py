@@ -9,7 +9,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    model: str
+    model: str = Field(min_length=1)
     messages: list[ChatMessage] = Field(min_length=1)
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1)

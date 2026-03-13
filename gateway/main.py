@@ -91,6 +91,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("startup_bittensor_skipped")
         dendrite = None
         metagraph_manager = None
+        app.state.dendrite = None
+        app.state.miner_selector = None
         app.state.adapter_registry = AdapterRegistry()
 
     yield

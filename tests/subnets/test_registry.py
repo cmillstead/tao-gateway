@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from gateway.core.exceptions import SubnetUnavailableError
@@ -10,13 +12,13 @@ class StubAdapter(BaseAdapter):
         self._netuid = netuid
         self._name = name
 
-    def to_synapse(self, request_data: dict):
+    def to_synapse(self, request_data: dict[str, Any]):
         pass
 
-    def from_response(self, synapse, request_data: dict | None = None) -> dict:
+    def from_response(self, synapse, request_data: dict[str, Any]) -> dict[str, Any]:
         return {}
 
-    def sanitize_output(self, response_data: dict) -> dict:
+    def sanitize_output(self, response_data: dict[str, Any]) -> dict[str, Any]:
         return response_data
 
     def get_config(self) -> AdapterConfig:

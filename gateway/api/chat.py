@@ -2,9 +2,9 @@ import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
-from gateway.core.exceptions import GatewayError
+from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
-from gateway.schemas.chat import ChatCompletionRequest
+from gateway.schemas.chat import ChatCompletionRequest, ChatCompletionResponse
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -52,6 +52,28 @@ async def create_chat_completion(
             status_code=exc.status_code,
         )
         raise
+    except Exception as exc:
+        logger.error(
+            "chat_completion_error",
+            model=body.model,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        raise
+
+    # Validate response against OpenAI schema before returning
+    try:
+        ChatCompletionResponse.model_validate(response_data)
+    except Exception as exc:
+        logger.error(
+            "chat_completion_response_invalid",
+            model=body.model,
+            error=str(exc),
+        )
+        raise MinerInvalidResponseError(
+            miner_uid=headers.get("X-TaoGateway-Miner-UID", "unknown"),
+            subnet=headers.get("X-TaoGateway-Subnet", "unknown"),
+        ) from exc
 
     logger.info(
         "chat_completion_success",
