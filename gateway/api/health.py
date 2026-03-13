@@ -36,6 +36,13 @@ _SYNC_ERROR_CATEGORIES: dict[str, str] = {
     "connection": "connection_error",
     "unreachable": "connection_error",
     "refused": "connection_error",
+    "reset": "connection_error",
+    "ssl": "ssl_error",
+    "certificate": "ssl_error",
+    "dns": "dns_error",
+    "resolve": "dns_error",
+    "authentication": "auth_error",
+    "permission": "auth_error",
 }
 
 
