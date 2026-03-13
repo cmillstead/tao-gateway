@@ -61,6 +61,7 @@ class TestMetagraphManager:
     def test_get_metagraph_unknown_subnet(self, manager: MetagraphManager) -> None:
         assert manager.get_metagraph(999) is None
 
+    @pytest.mark.asyncio
     async def test_sync_all_success(
         self, manager: MetagraphManager, mock_subtensor: MagicMock
     ) -> None:
@@ -72,6 +73,7 @@ class TestMetagraphManager:
         assert state.consecutive_failures == 0
         assert state.is_stale is False
 
+    @pytest.mark.asyncio
     async def test_sync_all_failure_keeps_cached(
         self, manager: MetagraphManager, mock_subtensor: MagicMock
     ) -> None:
@@ -88,6 +90,7 @@ class TestMetagraphManager:
         assert state.last_sync_error is not None
         assert state.consecutive_failures == 1
 
+    @pytest.mark.asyncio
     async def test_sync_failure_increments_consecutive(
         self, manager: MetagraphManager, mock_subtensor: MagicMock
     ) -> None:
@@ -98,6 +101,7 @@ class TestMetagraphManager:
         assert state is not None
         assert state.consecutive_failures == 2
 
+    @pytest.mark.asyncio
     async def test_sync_success_resets_failures(
         self, manager: MetagraphManager, mock_subtensor: MagicMock
     ) -> None:
@@ -111,6 +115,7 @@ class TestMetagraphManager:
         assert state.consecutive_failures == 0
         assert state.last_sync_error is None
 
+    @pytest.mark.asyncio
     async def test_staleness_detection(
         self, manager: MetagraphManager, mock_subtensor: MagicMock
     ) -> None:
@@ -121,11 +126,12 @@ class TestMetagraphManager:
         state.last_sync_time = time.time() - 400  # >5min
         assert state.is_stale is True
 
+    @pytest.mark.asyncio
     async def test_start_and_stop(
         self, manager: MetagraphManager, mock_subtensor: MagicMock
     ) -> None:
         manager._sync_interval = 0.01  # fast for test
-        manager.start()
+        await manager.start()
         await asyncio.sleep(0.05)
         await manager.stop()
         # Should have synced at least once

@@ -13,7 +13,7 @@ def create_wallet() -> bt.Wallet:
         path=settings.wallet_path,
         hotkey=settings.hotkey_name,
     )
-    logger.info("wallet_loaded")
+    logger.info("wallet_loaded", wallet_name=settings.wallet_name)
     return wallet
 
 
