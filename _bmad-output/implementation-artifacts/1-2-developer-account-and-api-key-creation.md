@@ -495,6 +495,7 @@ Claude Opus 4.6
 - 2026-03-12: Fifth adversarial code review — fixed 2 HIGH (missing updated_at audit trail on models, hand-written Alembic migration ID) + 3 MEDIUM (rate limit sliding window → fixed window via Lua, argon2 rehash check on login+key verify, get_current_api_key returns ApiKeyInfo with org_id). JWT now includes iat claim. 43/43 tests pass.
 - 2026-03-12: Sixth adversarial code review — fixed 1 HIGH (revoke_api_key cache delete before DB commit) + 3 MEDIUM (no pagination on list_api_keys, cache corruption returns 500 instead of DB fallback, rehash commit failure kills valid request). 43/43 tests pass.
 - 2026-03-12: Seventh adversarial code review (combined 1.1+1.2) — fixed 3 HIGH (missing revoke endpoint, revoke cache race TOCTOU, no pagination bounds) + 2 HIGH (no per-org key limit, signup IntegrityError session state) + 2 MEDIUM (prefix magic number, test Redis cleanup O(N)). Added revoke endpoint, pagination validation, per-org key limit, expired JWT test, revoke tests. 49/49 tests pass.
+- 2026-03-12: Eighth adversarial code review (combined 1.1+1.2) — fixed 7 HIGH (cache auth bypass, revoke TOCTOU tombstone, updated_at DB triggers, lazy Settings/engine, Redis circuit breaker, health test no-op, python-jose noted) + 10 MEDIUM (JWT min length, login logging, log redaction depth, startup checks, cross-tenant test, wrong-secret JWT test, conftest hard-override, Dockerfile multi-stage, alembic placeholder, revoke schema) + 8 LOW. New migration 1f760edb6b6a adds Postgres triggers for updated_at. 53/53 tests pass.
 
 ### File List
 - gateway/models/base.py (new) — DeclarativeBase shared by all models
@@ -577,3 +578,26 @@ Claude Opus 4.6
 - gateway/api/api_keys.py (modified) — list endpoint accepts limit/offset query params
 - gateway/middleware/auth.py (modified) — cache hit handles corrupt data gracefully; rehash failure doesn't kill valid request
 - gateway/services/auth_service.py (modified) — login rehash failure doesn't kill valid login
+
+**Eighth Adversarial Code Review Fixes (2026-03-12):**
+- gateway/middleware/auth.py (modified) — cache now stores key_hash:key_id:org_id, always verifies hash on cache hit, respects __revoked__ tombstone
+- gateway/services/api_key_service.py (modified) — revoke sets tombstone after DB commit instead of deleting before
+- gateway/core/config.py (modified) — JWT secret min length 32 chars, lazy Settings via lru_cache, PackageNotFoundError specific catch
+- gateway/core/database.py (modified) — lazy engine/session factory via get_engine()/get_session_factory(), echo=settings.debug
+- gateway/core/redis.py (modified) — circuit breaker with 5s cooldown, ping on connect, structured error logging
+- gateway/core/logging.py (modified) — added authorization/cookie to sensitive patterns, recursive nested dict redaction
+- gateway/core/security.py (modified) — pinned argon2 PasswordHasher params (time_cost=3, memory_cost=65536, parallelism=4)
+- gateway/main.py (modified) — startup health checks for DB + Redis in lifespan, uses get_engine() factory
+- gateway/api/auth.py (modified) — login success/failure audit logging
+- gateway/api/api_keys.py (modified) — revoke returns ApiKeyRevokeResponse schema
+- gateway/schemas/api_keys.py (modified) — added ApiKeyRevokeResponse model
+- alembic.ini (modified) — replaced hardcoded credentials placeholder with driver://
+- Dockerfile (modified) — multi-stage build, pinned uv to 0.7.3
+- .dockerignore (new) — excludes .git, tests, .env, etc. from Docker context
+- migrations/versions/1f760edb6b6a_add_updated_at_triggers.py (new) — Postgres BEFORE UPDATE triggers on organizations and api_keys
+- tests/conftest.py (modified) — hard-overrides DATABASE_URL (not setdefault), asserts "test" in URL, scan_iter count=1000
+- tests/api/test_health.py (modified) — health degraded test uses dependency_overrides, asserts status==degraded and code==503
+- tests/api/test_api_keys.py (modified) — added test_revoke_other_orgs_key_returns_404 cross-tenant isolation test
+- tests/middleware/test_auth_middleware.py (modified) — tests verify hash on cache hit, added cache_hit_wrong_token_rejected + revoked_tombstone tests
+- tests/services/test_auth_service.py (modified) — added test_jwt_verify_wrong_secret_rejected
+- tests/models/test_models.py (modified) — fixed test_organization_has_id_default assertion

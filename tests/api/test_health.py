@@ -1,5 +1,3 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from httpx import AsyncClient
 
@@ -32,27 +30,32 @@ async def test_redoc_accessible(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_health_degraded_when_db_down(client: AsyncClient) -> None:
     """Health endpoint returns 503 with degraded status when DB is down."""
+    from unittest.mock import AsyncMock
+
     from gateway.api.health import clear_health_cache
+
     clear_health_cache()
 
-    with patch("gateway.api.health.get_db") as mock_get_db:
-        mock_session = AsyncMock()
-        mock_session.execute.side_effect = ConnectionError("DB down")
+    # Override the dependency at the app level to inject a broken DB session
+    from gateway.core.database import get_db
+    from gateway.main import app
 
-        async def _broken_db():  # type: ignore[no-untyped-def]
-            yield mock_session
+    mock_session = AsyncMock()
+    mock_session.execute.side_effect = ConnectionError("DB down")
 
-        mock_get_db.return_value = _broken_db()
-        # The patched dependency won't be picked up by FastAPI's Depends()
-        # injection, so we test the handler directly instead.
-    # Integration test: we can't easily mock Depends() in FastAPI, so we
-    # verify the logic via a simpler approach — check that the response
-    # schema allows the degraded state.
-    response = await client.get("/v1/health")
-    data = response.json()
-    assert data["status"] in ("healthy", "degraded")
-    assert "database" in data
-    assert "redis" in data
+    async def _broken_db():  # type: ignore[no-untyped-def]
+        yield mock_session
+
+    app.dependency_overrides[get_db] = _broken_db
+    try:
+        response = await client.get("/v1/health")
+        data = response.json()
+        assert response.status_code == 503
+        assert data["status"] == "degraded"
+        assert data["database"] == "unhealthy"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        clear_health_cache()
 
 
 @pytest.mark.asyncio

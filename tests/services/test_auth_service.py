@@ -51,6 +51,20 @@ def test_jwt_verify_empty_token() -> None:
     assert exc_info.value.status_code == 401
 
 
+def test_jwt_verify_wrong_secret_rejected() -> None:
+    """JWT signed with a different secret key is rejected."""
+    wrong_secret_payload = {
+        "sub": "550e8400-e29b-41d4-a716-446655440000",
+        "iat": datetime.now(UTC),
+        "exp": datetime.now(UTC) + timedelta(hours=1),
+    }
+    wrong_secret = "totally-wrong-secret-key-here-1234"
+    token = jwt.encode(wrong_secret_payload, wrong_secret, algorithm="HS256")
+    with pytest.raises(AuthenticationError) as exc_info:
+        verify_jwt_token(token)
+    assert exc_info.value.status_code == 401
+
+
 def test_jwt_verify_expired_token() -> None:
     """Expired JWT is rejected with AuthenticationError."""
     expired_payload = {

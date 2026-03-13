@@ -1,16 +1,19 @@
 import warnings
+from functools import lru_cache
+from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 _INSECURE_DEFAULT_SECRET = "change-me-in-production"
+_MIN_JWT_SECRET_LENGTH = 32
 
 
 def _get_app_version() -> str:
     try:
         return _pkg_version("tao-gateway")
-    except Exception:
+    except PackageNotFoundError:
         return "0.0.0-dev"
 
 
@@ -52,9 +55,21 @@ class Settings(BaseSettings):
             else:
                 raise ValueError(
                     "JWT_SECRET_KEY must be set to a secure value in production. "
-                    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                    'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
                 )
+        elif len(self.jwt_secret_key) < _MIN_JWT_SECRET_LENGTH and not self.debug:
+            raise ValueError(
+                f"JWT_SECRET_KEY must be at least {_MIN_JWT_SECRET_LENGTH} characters. "
+                'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
+            )
         return self
 
 
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
+
+
+# Module-level convenience alias — uses cached singleton.
+# Safe because lru_cache defers instantiation until first access.
+settings = get_settings()

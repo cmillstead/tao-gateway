@@ -1,8 +1,12 @@
 import os
 
-# Point tests at the test database and enable debug mode BEFORE any gateway imports.
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://tao:tao@localhost:5432/tao_gateway_test")
-os.environ.setdefault("DEBUG", "true")
+# Hard-override to prevent tests ever running against production.
+# These MUST be set before any gateway imports.
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://tao:tao@localhost:5432/tao_gateway_test"
+os.environ["DEBUG"] = "true"
+
+_db_url = os.environ["DATABASE_URL"]
+assert "test" in _db_url, f"Refusing to run tests against non-test database: {_db_url}"
 
 from collections.abc import AsyncGenerator  # noqa: E402
 
@@ -11,7 +15,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from gateway.api.health import clear_health_cache  # noqa: E402
-from gateway.core.database import engine  # noqa: E402
+from gateway.core.database import get_engine  # noqa: E402
 from gateway.core.redis import get_redis  # noqa: E402
 from gateway.main import app  # noqa: E402
 from gateway.models import Base  # noqa: E402
@@ -21,6 +25,7 @@ from gateway.services.auth_service import create_jwt_token  # noqa: E402
 @pytest.fixture(scope="session", autouse=True)
 async def _create_tables() -> None:
     """Recreate all tables from model metadata at test session start."""
+    engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
@@ -29,14 +34,13 @@ async def _create_tables() -> None:
 async def _flush_test_state() -> None:
     """Truncate DB tables and flush Redis test keys."""
     clear_health_cache()
+    engine = get_engine()
     redis = await get_redis()
-    # Quote table names to prevent SQL injection from unexpected __tablename__ values
     table_names = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
     async with engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
-    # Batch-delete Redis keys instead of one-at-a-time round-trips
     for pattern in ("auth_rate:*", "api_key:*"):
-        keys = [k async for k in redis.scan_iter(pattern)]
+        keys = [k async for k in redis.scan_iter(pattern, count=1000)]
         if keys:
             await redis.delete(*keys)
 

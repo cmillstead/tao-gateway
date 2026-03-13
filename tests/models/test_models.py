@@ -26,9 +26,9 @@ def test_api_key_columns() -> None:
     assert columns == expected
 
 
-def test_organization_default_id() -> None:
-    org = Organization(email="test@example.com", password_hash="hash")
-    assert org.id is not None or Organization.__table__.columns["id"].default is not None
+def test_organization_has_id_default() -> None:
+    col = Organization.__table__.columns["id"]
+    assert col.default is not None, "Organization.id should have a Python-side default"
 
 
 def test_api_key_foreign_key() -> None:
