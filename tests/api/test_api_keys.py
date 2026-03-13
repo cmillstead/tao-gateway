@@ -75,3 +75,55 @@ async def test_create_api_key_unauthenticated(client: AsyncClient) -> None:
         json={"environment": "live"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_revoke_api_key(client: AsyncClient) -> None:
+    token = await _signup_and_get_jwt(client, "revoke@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    key_id = create_resp.json()["id"]
+
+    revoke_resp = await client.delete(
+        f"/dashboard/api-keys/{key_id}",
+        headers=headers,
+    )
+    assert revoke_resp.status_code == 200
+    assert revoke_resp.json()["message"] == "API key revoked"
+
+    # Verify key shows as inactive in listing
+    list_resp = await client.get("/dashboard/api-keys", headers=headers)
+    keys = list_resp.json()
+    revoked_key = next(k for k in keys if k["id"] == key_id)
+    assert revoked_key["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_revoke_nonexistent_key_returns_404(client: AsyncClient) -> None:
+    token = await _signup_and_get_jwt(client, "revoke404@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = await client.delete(
+        "/dashboard/api-keys/00000000-0000-0000-0000-000000000000",
+        headers=headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_pagination_bounds(client: AsyncClient) -> None:
+    """Pagination params are validated: limit must be 1-100, offset >= 0."""
+    token = await _signup_and_get_jwt(client, "pagination@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.get("/dashboard/api-keys?limit=0", headers=headers)
+    assert resp.status_code == 422
+
+    resp = await client.get("/dashboard/api-keys?limit=101", headers=headers)
+    assert resp.status_code == 422
+
+    resp = await client.get("/dashboard/api-keys?offset=-1", headers=headers)
+    assert resp.status_code == 422

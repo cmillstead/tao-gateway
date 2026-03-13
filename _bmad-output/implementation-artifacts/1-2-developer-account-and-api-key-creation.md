@@ -494,6 +494,7 @@ Claude Opus 4.6
 - 2026-03-12: Fourth adversarial code review — fixed 2 HIGH (redis.keys O(N) in tests, trusted proxy validation) + 2 MEDIUM (revoke cache race condition, duplicate conftest cleanup). 42/42 tests pass.
 - 2026-03-12: Fifth adversarial code review — fixed 2 HIGH (missing updated_at audit trail on models, hand-written Alembic migration ID) + 3 MEDIUM (rate limit sliding window → fixed window via Lua, argon2 rehash check on login+key verify, get_current_api_key returns ApiKeyInfo with org_id). JWT now includes iat claim. 43/43 tests pass.
 - 2026-03-12: Sixth adversarial code review — fixed 1 HIGH (revoke_api_key cache delete before DB commit) + 3 MEDIUM (no pagination on list_api_keys, cache corruption returns 500 instead of DB fallback, rehash commit failure kills valid request). 43/43 tests pass.
+- 2026-03-12: Seventh adversarial code review (combined 1.1+1.2) — fixed 3 HIGH (missing revoke endpoint, revoke cache race TOCTOU, no pagination bounds) + 2 HIGH (no per-org key limit, signup IntegrityError session state) + 2 MEDIUM (prefix magic number, test Redis cleanup O(N)). Added revoke endpoint, pagination validation, per-org key limit, expired JWT test, revoke tests. 49/49 tests pass.
 
 ### File List
 - gateway/models/base.py (new) — DeclarativeBase shared by all models

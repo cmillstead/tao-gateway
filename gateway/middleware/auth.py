@@ -14,6 +14,7 @@ from gateway.core.exceptions import AuthenticationError
 from gateway.core.redis import get_redis
 from gateway.core.security import ph
 from gateway.models.api_key import ApiKey
+from gateway.services.api_key_service import API_KEY_PREFIX_LENGTH
 from gateway.services.auth_service import verify_jwt_token
 
 logger = structlog.get_logger()
@@ -38,7 +39,7 @@ async def get_current_api_key(
         raise AuthenticationError("Missing authorization header")
 
     token = credentials.credentials
-    prefix = token[:20]
+    prefix = token[:API_KEY_PREFIX_LENGTH]
     cache_key = f"api_key:{prefix}"
 
     # Try Redis cache first

@@ -474,6 +474,7 @@ Claude Opus 4.6
 - 2026-03-12: Fourth adversarial code review — fixed 3 HIGH (JWT secret fails in prod, Dockerfile non-root user + HEALTHCHECK, alembic.ini hardcoded creds) + 3 MEDIUM (health endpoint checks DB/Redis, DB connection pool config, test conftest cleanup dedup). 42/42 tests pass.
 - 2026-03-12: Fifth adversarial code review — fixed 1 HIGH (health endpoint DDoS via 5s response cache) + 2 MEDIUM (Redis unbounded connection pool, test DB auto-setup with drop/create_all). 43/43 tests pass.
 - 2026-03-12: Sixth adversarial code review — fixed 1 HIGH (docker-compose.yml missing DEBUG/JWT_SECRET_KEY, fresh clone crashes on startup). 43/43 tests pass.
+- 2026-03-12: Seventh adversarial code review (combined 1.1+1.2) — fixed 2 HIGH (Redis init race condition, health returns 200 on degraded) + 5 MEDIUM (cache sticks degraded, log redaction leaks 12 chars, max_overflow=0, setup_logging late, SQL injection in test TRUNCATE) + 3 LOW (Dockerfile healthcheck, docker-compose port binding, version duplication). Added health degraded + cache tests. 49/49 tests pass.
 
 ### File List
 - pyproject.toml (new)

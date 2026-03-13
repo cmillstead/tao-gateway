@@ -12,8 +12,7 @@ def _redact_sensitive_keys(
     sensitive_patterns = ["api_key", "token", "password", "secret", "coldkey", "hotkey"]
     for key in list(event_dict.keys()):
         if any(pattern in key.lower() for pattern in sensitive_patterns):
-            value = str(event_dict[key])
-            event_dict[key] = value[:12] + "****" if len(value) > 12 else "****"
+            event_dict[key] = "****"
     return event_dict
 
 
