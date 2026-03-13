@@ -56,7 +56,12 @@ class SN1TextAdapter(BaseAdapter):
     # Dangerous HTML tags that could execute code or load external content
     _DANGEROUS_TAGS_RE = re.compile(
         r"<\s*/?\s*(?:script|iframe|object|embed|form|input|button|textarea"
-        r"|select|style|link|meta|base|applet|svg|math)\b[^>]*>",
+        r"|select|style|link|meta|base|applet|svg)\b[^>]*>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    # Content between script/style tags (strip payload, not just the tags)
+    _DANGEROUS_CONTENT_RE = re.compile(
+        r"<\s*(?:script|style)\b[^>]*>.*?<\s*/\s*(?:script|style)\s*>",
         re.IGNORECASE | re.DOTALL,
     )
     # Event handler attributes on any tag (onerror, onload, onclick, etc.)
@@ -64,13 +69,24 @@ class SN1TextAdapter(BaseAdapter):
         r"<([^>]*?\s)on\w+\s*=[^>]*>",
         re.IGNORECASE,
     )
+    # javascript: protocol in attributes
+    _JS_PROTOCOL_RE = re.compile(
+        r"<[^>]*\s(?:href|src|action)\s*=\s*[\"']?\s*javascript\s*:[^>]*>",
+        re.IGNORECASE,
+    )
 
     def sanitize_output(self, response_data: dict[str, Any]) -> dict[str, Any]:
         content = response_data["choices"][0]["message"]["content"]
-        # Strip dangerous HTML tags that could execute code or load external content
+        if not isinstance(content, str):
+            content = str(content) if content is not None else ""
+        # Strip script/style tags WITH their content (prevent payload leaking as text)
+        content = self._DANGEROUS_CONTENT_RE.sub("", content)
+        # Strip remaining dangerous tags (unpaired or other dangerous elements)
         content = self._DANGEROUS_TAGS_RE.sub("", content)
         # Strip tags with event handler attributes (e.g., <img onerror="...">)
         content = self._EVENT_HANDLER_RE.sub("", content)
+        # Strip tags with javascript: protocol (e.g., <a href="javascript:...">)
+        content = self._JS_PROTOCOL_RE.sub("", content)
         content = content.replace("\x00", "")
         response_data["choices"][0]["message"]["content"] = content
         return response_data

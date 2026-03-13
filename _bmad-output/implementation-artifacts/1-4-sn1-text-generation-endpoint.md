@@ -107,6 +107,14 @@ So that I can use decentralized AI by swapping `base_url` in my existing OpenAI 
 - [x] [AI-Review][LOW] L2: Dev Notes code blocks updated to reflect `request_data` parameter in `from_response()`
 - [x] [AI-Review][LOW] L3: `model` field now has `min_length=1` — empty string returns clear 422 instead of confusing 503
 
+#### Round 3 Review Follow-ups (AI)
+
+- [x] [AI-Review][MEDIUM] M1: `javascript:` protocol in href now stripped by dedicated regex
+- [x] [AI-Review][MEDIUM] M2: Added integration test for `ChatCompletionResponse` validation failure → 502
+- [x] [AI-Review][MEDIUM] M3: `sanitize_output()` guards against `None` completion — converts to empty string
+- [x] [AI-Review][LOW] L1: Script/style tag content between paired tags now stripped (not just the tags)
+- [x] [AI-Review][LOW] L2: Removed `<math>` from dangerous tags list (legitimate MathML)
+
 ## Dev Notes
 
 ### Architecture Compliance — CRITICAL
@@ -605,6 +613,7 @@ Modified files:
 - 2026-03-13: Code review (Claude Opus 4.6) — 9 issues found (3 HIGH, 4 MEDIUM, 2 LOW). All added as review follow-up action items.
 - 2026-03-13: Addressed all 9 code review findings — XSS sanitization expanded, Bittensor-disabled path fixed, error logging added, model echo, empty response handling, test fixtures improved, max_tokens validated. 155 tests passing.
 - 2026-03-13: Round 2 code review (Claude Opus 4.6) — 9 issues found (3 HIGH, 3 MEDIUM, 3 LOW). All fixed: dendrite error classification, targeted HTML sanitization, response schema validation, unexpected exception logging, defensive app.state, better error messages, test signature fixes, model min_length. 160 tests passing.
+- 2026-03-13: Round 3 code review (Claude Opus 4.6) — 5 issues found (0 HIGH, 3 MEDIUM, 2 LOW). All fixed: javascript: protocol sanitization, response validation test, None completion guard, script content stripping, math tag allowlist. 164 tests passing.
 
 ## Senior Developer Review (AI)
 
@@ -640,11 +649,23 @@ Modified files:
 - [x] [LOW] L2: Dev Notes code examples updated for `request_data` in `from_response()`
 - [x] [LOW] L3: `model` field has `min_length=1` — empty string → 422
 
+### Round 3
+
+**Reviewer:** Claude Opus 4.6 (1M context)
+**Date:** 2026-03-13
+**Outcome:** Approved (0 HIGH issues)
+
+- [x] [MEDIUM] M1: `javascript:` protocol in href now stripped
+- [x] [MEDIUM] M2: Integration test for response validation failure path → 502
+- [x] [MEDIUM] M3: `sanitize_output()` guards against `None` completion
+- [x] [LOW] L1: Script/style content between paired tags now stripped
+- [x] [LOW] L2: Removed `<math>` from dangerous tags (legitimate MathML)
+
 ### Severity Breakdown (Combined)
 
-| Severity | Round 1 | Round 2 | Total |
-|----------|---------|---------|-------|
-| HIGH | 3 | 3 | 6 |
-| MEDIUM | 4 | 3 | 7 |
-| LOW | 2 | 3 | 5 |
-| **Total** | **9** | **9** | **18** |
+| Severity | Round 1 | Round 2 | Round 3 | Total |
+|----------|---------|---------|---------|-------|
+| HIGH | 3 | 3 | 0 | 6 |
+| MEDIUM | 4 | 3 | 3 | 10 |
+| LOW | 2 | 3 | 2 | 7 |
+| **Total** | **9** | **9** | **5** | **23** |
