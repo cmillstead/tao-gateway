@@ -5,13 +5,15 @@ from gateway.core.exceptions import GatewayError
 
 
 async def gateway_exception_handler(request: Request, exc: GatewayError) -> JSONResponse:
+    body: dict[str, object] = {
+        "type": exc.error_type,
+        "message": exc.message,
+        "code": exc.status_code,
+    }
+    reason = getattr(exc, "reason", None)
+    if reason is not None:
+        body["reason"] = reason
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "error": {
-                "type": exc.error_type,
-                "message": exc.message,
-                "code": exc.status_code,
-            }
-        },
+        content={"error": body},
     )

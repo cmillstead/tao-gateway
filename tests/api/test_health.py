@@ -84,6 +84,25 @@ async def test_health_includes_metagraph_status(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_health_ok_without_metagraph_manager(client: AsyncClient) -> None:
+    """Health endpoint works when metagraph_manager is absent from app.state."""
+    from gateway.api.health import clear_health_cache
+    from gateway.main import app
+
+    clear_health_cache()
+    original = app.state.metagraph_manager
+    del app.state.metagraph_manager
+    try:
+        response = await client.get("/v1/health")
+        data = response.json()
+        assert response.status_code == 200
+        assert data["metagraph"] is None
+    finally:
+        app.state.metagraph_manager = original
+        clear_health_cache()
+
+
+@pytest.mark.asyncio
 async def test_health_degraded_when_metagraph_stale(client: AsyncClient) -> None:
     """Health endpoint returns degraded when metagraph is stale."""
     from gateway.api.health import clear_health_cache

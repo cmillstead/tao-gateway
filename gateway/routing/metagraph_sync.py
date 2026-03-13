@@ -1,6 +1,8 @@
 import asyncio
 import contextlib
+import copy
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import bittensor as bt
@@ -23,6 +25,7 @@ class SubnetMetagraphState:
     last_sync_error: str | None = None
     consecutive_failures: int = 0
     staleness_threshold: float = _DEFAULT_STALENESS_SECONDS
+    sync_generation: int = 0
 
     @property
     def is_stale(self) -> bool:
@@ -35,11 +38,20 @@ class SubnetMetagraphState:
 class MetagraphManager:
     """Manages metagraph state for all registered subnets."""
 
-    def __init__(self, subtensor: bt.Subtensor, sync_interval: int = 120) -> None:
+    def __init__(
+        self,
+        subtensor: bt.Subtensor,
+        sync_interval: int = 120,
+        sync_timeout: float = 30.0,
+    ) -> None:
         self._subtensor = subtensor
         self._sync_interval = sync_interval
+        self._sync_timeout = sync_timeout
         self._subnets: dict[int, SubnetMetagraphState] = {}
         self._sync_task: asyncio.Task[None] | None = None
+        self._executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="metagraph-sync"
+        )
 
     def register_subnet(self, netuid: int) -> None:
         self._subnets[netuid] = SubnetMetagraphState(netuid=netuid)
@@ -52,25 +64,30 @@ class MetagraphManager:
         return self._subnets.get(netuid)
 
     def get_all_states(self) -> dict[int, SubnetMetagraphState]:
-        """Return all registered subnet states for health reporting.
+        """Return shallow copies of all subnet states for health reporting.
 
-        Note: returned SubnetMetagraphState objects are shared references —
-        callers should treat them as read-only.
+        Callers get independent copies — mutations do not affect the manager.
+        The metagraph reference is shared (read-only by convention) to avoid
+        expensive deep copies.
         """
-        return dict(self._subnets)
+        return {netuid: copy.copy(state) for netuid, state in self._subnets.items()}
 
     async def sync_all(self) -> None:
         """Sync all registered subnet metagraphs."""
         for netuid, state in self._subnets.items():
             try:
                 loop = asyncio.get_running_loop()
-                metagraph = await loop.run_in_executor(
-                    None, self._subtensor.metagraph, netuid
+                metagraph = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        self._executor, self._subtensor.metagraph, netuid
+                    ),
+                    timeout=self._sync_timeout,
                 )
                 state.metagraph = metagraph
                 state.last_sync_time = time.time()
                 state.last_sync_error = None
                 state.consecutive_failures = 0
+                state.sync_generation += 1
                 logger.info(
                     "metagraph_synced",
                     netuid=netuid,
@@ -103,8 +120,9 @@ class MetagraphManager:
         self._sync_task = asyncio.create_task(self._sync_loop())
 
     async def stop(self) -> None:
-        """Cancel sync task on shutdown."""
+        """Cancel sync task and shut down executor on shutdown."""
         if self._sync_task:
             self._sync_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._sync_task
+        self._executor.shutdown(wait=False, cancel_futures=True)
