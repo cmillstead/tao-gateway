@@ -1,6 +1,7 @@
 import contextlib
 from datetime import UTC, datetime, timedelta
 
+import structlog
 from argon2.exceptions import VerifyMismatchError
 from jose import JWTError, jwt
 from sqlalchemy import select
@@ -38,10 +39,14 @@ async def login(email: str, password: str, db: AsyncSession) -> str:
     except VerifyMismatchError as exc:
         raise AuthenticationError("Invalid credentials") from exc
 
-    # Transparently upgrade hash if argon2 parameters have changed
-    if ph.check_needs_rehash(org.password_hash):
-        org.password_hash = ph.hash(password)
-        await db.commit()
+    # Best-effort rehash — don't fail login if this errors
+    try:
+        if ph.check_needs_rehash(org.password_hash):
+            org.password_hash = ph.hash(password)
+            await db.commit()
+    except Exception:
+        structlog.get_logger().warning("password_rehash_failed", org_id=str(org.id))
+        await db.rollback()
 
     return create_jwt_token(str(org.id))
 
