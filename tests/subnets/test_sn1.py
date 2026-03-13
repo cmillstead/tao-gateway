@@ -128,7 +128,7 @@ class TestSN1TextAdapterSanitize:
         result = adapter.sanitize_output(response_data)
         assert "\x00" not in result["choices"][0]["message"]["content"]
 
-    def test_strips_img_onerror(self):
+    def test_strips_img_with_event_handler(self):
         from gateway.subnets.sn1_text import SN1TextAdapter
 
         adapter = SN1TextAdapter()
@@ -139,8 +139,9 @@ class TestSN1TextAdapterSanitize:
         }
         result = adapter.sanitize_output(response_data)
         content = result["choices"][0]["message"]["content"]
-        assert "<img" not in content
-        assert "Hi there" in content
+        assert "onerror" not in content
+        assert "Hi" in content
+        assert "there" in content
 
     def test_strips_iframe_tags(self):
         from gateway.subnets.sn1_text import SN1TextAdapter
@@ -179,6 +180,47 @@ class TestSN1TextAdapterSanitize:
         }
         result = adapter.sanitize_output(response_data)
         assert result["choices"][0]["message"]["content"] == "Normal safe content"
+
+    def test_preserves_safe_html_tags(self):
+        from gateway.subnets.sn1_text import SN1TextAdapter
+
+        adapter = SN1TextAdapter()
+        response_data = {
+            "choices": [
+                {"message": {"content": "Use <div> for layout and <span> for inline"}}
+            ]
+        }
+        result = adapter.sanitize_output(response_data)
+        content = result["choices"][0]["message"]["content"]
+        assert "<div>" in content
+        assert "<span>" in content
+
+    def test_preserves_angle_brackets_in_math(self):
+        from gateway.subnets.sn1_text import SN1TextAdapter
+
+        adapter = SN1TextAdapter()
+        response_data = {
+            "choices": [
+                {"message": {"content": "if x < 10 and y > 5, then z = x + y"}}
+            ]
+        }
+        result = adapter.sanitize_output(response_data)
+        content = result["choices"][0]["message"]["content"]
+        assert content == "if x < 10 and y > 5, then z = x + y"
+
+    def test_preserves_code_with_html_examples(self):
+        from gateway.subnets.sn1_text import SN1TextAdapter
+
+        adapter = SN1TextAdapter()
+        response_data = {
+            "choices": [
+                {"message": {"content": "Here is HTML: <div class='main'><p>Hello</p></div>"}}
+            ]
+        }
+        result = adapter.sanitize_output(response_data)
+        content = result["choices"][0]["message"]["content"]
+        assert "<div class='main'>" in content
+        assert "<p>" in content
 
 
 class TestSN1TextAdapterConfig:

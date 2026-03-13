@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,16 +14,16 @@ from gateway.subnets.base import AdapterConfig, BaseAdapter
 class FakeAdapter(BaseAdapter):
     """Concrete adapter for testing the base execute() flow."""
 
-    def to_synapse(self, request_data: dict):
+    def to_synapse(self, request_data: dict[str, Any]):
         synapse = MagicMock()
         synapse.roles = request_data.get("roles", [])
         synapse.messages = request_data.get("messages", [])
         return synapse
 
-    def from_response(self, synapse, request_data: dict | None = None) -> dict:
+    def from_response(self, synapse, request_data: dict[str, Any]) -> dict[str, Any]:
         return {"result": synapse.completion}
 
-    def sanitize_output(self, response_data: dict) -> dict:
+    def sanitize_output(self, response_data: dict[str, Any]) -> dict[str, Any]:
         return response_data
 
     def get_config(self) -> AdapterConfig:
@@ -145,10 +146,10 @@ class TestBaseAdapterExecute:
         assert exc_info.value.status_code == 502
 
     @pytest.mark.asyncio
-    async def test_dendrite_exception_raises_timeout_error(
+    async def test_dendrite_timeout_exception_raises_timeout_error(
         self, fake_adapter, mock_dendrite, mock_miner_selector
     ):
-        mock_dendrite.forward.side_effect = Exception("Network error")
+        mock_dendrite.forward.side_effect = TimeoutError("Miner timed out")
 
         with pytest.raises(MinerTimeoutError):
             await fake_adapter.execute(
@@ -156,6 +157,21 @@ class TestBaseAdapterExecute:
                 dendrite=mock_dendrite,
                 miner_selector=mock_miner_selector,
             )
+
+    @pytest.mark.asyncio
+    async def test_dendrite_non_timeout_exception_raises_invalid_response(
+        self, fake_adapter, mock_dendrite, mock_miner_selector
+    ):
+        mock_dendrite.forward.side_effect = ConnectionError("Network error")
+
+        with pytest.raises(MinerInvalidResponseError) as exc_info:
+            await fake_adapter.execute(
+                request_data={},
+                dendrite=mock_dendrite,
+                miner_selector=mock_miner_selector,
+            )
+
+        assert exc_info.value.status_code == 502
 
     @pytest.mark.asyncio
     async def test_no_miners_raises_subnet_unavailable(

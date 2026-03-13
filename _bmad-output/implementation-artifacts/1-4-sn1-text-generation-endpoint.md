@@ -1,6 +1,6 @@
 # Story 1.4: SN1 Text Generation Endpoint
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -95,6 +95,18 @@ So that I can use decentralized AI by swapping `base_url` in my existing OpenAI 
 - [x] [AI-Review][LOW] L1: Removed unused `structlog` logger from `sn1_text.py`
 - [x] [AI-Review][LOW] L2: Added `test_app` fixture; tests use it instead of `client._transport.app`
 
+#### Round 2 Review Follow-ups (AI)
+
+- [x] [AI-Review][HIGH] H1: `dendrite.forward()` non-timeout exceptions now correctly raise `MinerInvalidResponseError` (502) instead of `MinerTimeoutError` (504)
+- [x] [AI-Review][HIGH] H2: `sanitize_output()` now uses targeted dangerous-tag stripping instead of blanket `<[^>]*>` — preserves legitimate angle brackets in LLM code/math output
+- [x] [AI-Review][HIGH] H3: Response validated against `ChatCompletionResponse` schema before returning — malformed responses caught as 502
+- [x] [AI-Review][MEDIUM] M1: Unexpected (non-GatewayError) exceptions in chat handler now logged with `chat_completion_error` before re-raising
+- [x] [AI-Review][MEDIUM] M2: `enable_bittensor=False` path now explicitly sets `app.state.dendrite=None` and `app.state.miner_selector=None`
+- [x] [AI-Review][MEDIUM] M3: `SubnetUnavailableError` from `get_by_model()` now includes descriptive `reason` field instead of conflating model name with subnet
+- [x] [AI-Review][LOW] L1: `FakeAdapter`/`StubAdapter` test signatures now match `BaseAdapter` ABC contract (`dict[str, Any]`)
+- [x] [AI-Review][LOW] L2: Dev Notes code blocks updated to reflect `request_data` parameter in `from_response()`
+- [x] [AI-Review][LOW] L3: `model` field now has `min_length=1` — empty string returns clear 422 instead of confusing 503
+
 ## Dev Notes
 
 ### Architecture Compliance — CRITICAL
@@ -139,7 +151,7 @@ class BaseAdapter(ABC):
         ...
 
     @abstractmethod
-    def from_response(self, synapse: bt.Synapse) -> dict:
+    def from_response(self, synapse: bt.Synapse, request_data: dict) -> dict:
         """Convert miner's Synapse response to API response dict."""
         ...
 
@@ -252,12 +264,12 @@ class SN1TextAdapter(BaseAdapter):
             messages=[m["content"] for m in messages],
         )
 
-    def from_response(self, synapse: TextGenSynapse) -> dict:
+    def from_response(self, synapse: TextGenSynapse, request_data: dict) -> dict:
         return {
             "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
             "object": "chat.completion",
             "created": int(time.time()),
-            "model": "tao-sn1",
+            "model": str(request_data.get("model", "tao-sn1")),
             "choices": [
                 {
                     "index": 0,
@@ -592,18 +604,15 @@ Modified files:
 - 2026-03-13: Implemented Story 1.4 — SN1 text generation endpoint with OpenAI-compatible chat completions API, fat-base/thin-adapter pattern, adapter registry, full test coverage (45 new tests, 148 total passing)
 - 2026-03-13: Code review (Claude Opus 4.6) — 9 issues found (3 HIGH, 4 MEDIUM, 2 LOW). All added as review follow-up action items.
 - 2026-03-13: Addressed all 9 code review findings — XSS sanitization expanded, Bittensor-disabled path fixed, error logging added, model echo, empty response handling, test fixtures improved, max_tokens validated. 155 tests passing.
+- 2026-03-13: Round 2 code review (Claude Opus 4.6) — 9 issues found (3 HIGH, 3 MEDIUM, 3 LOW). All fixed: dendrite error classification, targeted HTML sanitization, response schema validation, unexpected exception logging, defensive app.state, better error messages, test signature fixes, model min_length. 160 tests passing.
 
 ## Senior Developer Review (AI)
 
+### Round 1
+
 **Reviewer:** Claude Opus 4.6 (1M context)
 **Date:** 2026-03-13
-**Outcome:** Changes Requested
-
-### Summary
-
-Implementation follows the fat-base/thin-adapter architecture correctly. All 8 tasks and subtasks are genuinely complete with real tests. OpenAI-compatible request/response format is solid. However, 3 HIGH issues need addressing before merge: incomplete XSS sanitization, crash when Bittensor disabled, and missing error logging.
-
-### Action Items
+**Outcome:** Changes Requested → All Fixed
 
 - [x] [HIGH] H1: Expand sanitize_output() — now strips ALL HTML tags
 - [x] [HIGH] H2: `enable_bittensor=False` path now sets empty AdapterRegistry — graceful 503
@@ -615,11 +624,27 @@ Implementation follows the fat-base/thin-adapter architecture correctly. All 8 t
 - [x] [LOW] L1: Removed unused `structlog` logger
 - [x] [LOW] L2: Added `test_app` fixture — no more `client._transport.app`
 
-### Severity Breakdown
+### Round 2
 
-| Severity | Count |
-|----------|-------|
-| HIGH | 3 |
-| MEDIUM | 4 |
-| LOW | 2 |
-| **Total** | **9** |
+**Reviewer:** Claude Opus 4.6 (1M context)
+**Date:** 2026-03-13
+**Outcome:** Changes Requested → All Fixed
+
+- [x] [HIGH] H1: Non-timeout `dendrite.forward()` exceptions now raise `MinerInvalidResponseError` (502) instead of `MinerTimeoutError` (504)
+- [x] [HIGH] H2: Targeted HTML sanitization — strips dangerous tags only, preserves legitimate angle brackets in code/math
+- [x] [HIGH] H3: Outgoing response validated against `ChatCompletionResponse` schema — malformed responses → 502
+- [x] [MEDIUM] M1: Unexpected (non-GatewayError) exceptions logged before re-raising
+- [x] [MEDIUM] M2: `enable_bittensor=False` explicitly sets `app.state.dendrite=None`, `miner_selector=None`
+- [x] [MEDIUM] M3: `get_by_model()` error includes descriptive reason instead of conflating model/subnet names
+- [x] [LOW] L1: Test adapter signatures match ABC contract (`dict[str, Any]`)
+- [x] [LOW] L2: Dev Notes code examples updated for `request_data` in `from_response()`
+- [x] [LOW] L3: `model` field has `min_length=1` — empty string → 422
+
+### Severity Breakdown (Combined)
+
+| Severity | Round 1 | Round 2 | Total |
+|----------|---------|---------|-------|
+| HIGH | 3 | 3 | 6 |
+| MEDIUM | 4 | 3 | 7 |
+| LOW | 2 | 3 | 5 |
+| **Total** | **9** | **9** | **18** |

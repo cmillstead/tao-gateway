@@ -33,5 +33,7 @@ class AdapterRegistry:
         if adapter is None:
             from gateway.core.exceptions import SubnetUnavailableError
 
-            raise SubnetUnavailableError(model_name)
+            raise SubnetUnavailableError(
+                model_name, reason=f"no adapter registered for model '{model_name}'"
+            )
         return adapter

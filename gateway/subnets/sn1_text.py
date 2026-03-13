@@ -53,10 +53,24 @@ class SN1TextAdapter(BaseAdapter):
             },
         }
 
+    # Dangerous HTML tags that could execute code or load external content
+    _DANGEROUS_TAGS_RE = re.compile(
+        r"<\s*/?\s*(?:script|iframe|object|embed|form|input|button|textarea"
+        r"|select|style|link|meta|base|applet|svg|math)\b[^>]*>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    # Event handler attributes on any tag (onerror, onload, onclick, etc.)
+    _EVENT_HANDLER_RE = re.compile(
+        r"<([^>]*?\s)on\w+\s*=[^>]*>",
+        re.IGNORECASE,
+    )
+
     def sanitize_output(self, response_data: dict[str, Any]) -> dict[str, Any]:
         content = response_data["choices"][0]["message"]["content"]
-        # Strip all HTML tags — SN1 returns plain text, no legitimate HTML
-        content = re.sub(r"<[^>]*>", "", content)
+        # Strip dangerous HTML tags that could execute code or load external content
+        content = self._DANGEROUS_TAGS_RE.sub("", content)
+        # Strip tags with event handler attributes (e.g., <img onerror="...">)
+        content = self._EVENT_HANDLER_RE.sub("", content)
         content = content.replace("\x00", "")
         response_data["choices"][0]["message"]["content"] = content
         return response_data

@@ -74,6 +74,18 @@ class BaseAdapter(ABC):
                 synapse=synapse,
                 timeout=config.timeout_seconds,
             )
+        except TimeoutError as exc:
+            elapsed = time.monotonic() - start_time
+            logger.warning(
+                "dendrite_query_timeout",
+                subnet=config.subnet_name,
+                miner_uid=miner_uid,
+                error=str(exc),
+                elapsed_ms=round(elapsed * 1000),
+            )
+            raise MinerTimeoutError(
+                miner_uid=miner_uid, subnet=config.subnet_name
+            ) from exc
         except Exception as exc:
             elapsed = time.monotonic() - start_time
             logger.warning(
@@ -81,9 +93,10 @@ class BaseAdapter(ABC):
                 subnet=config.subnet_name,
                 miner_uid=miner_uid,
                 error=str(exc),
+                error_type=type(exc).__name__,
                 elapsed_ms=round(elapsed * 1000),
             )
-            raise MinerTimeoutError(
+            raise MinerInvalidResponseError(
                 miner_uid=miner_uid, subnet=config.subnet_name
             ) from exc
 

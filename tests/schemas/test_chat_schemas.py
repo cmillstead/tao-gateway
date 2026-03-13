@@ -113,6 +113,16 @@ def test_request_max_tokens_zero_rejected():
         )
 
 
+def test_request_empty_model_rejected():
+    from gateway.schemas.chat import ChatCompletionRequest
+
+    with pytest.raises(ValidationError, match="model"):
+        ChatCompletionRequest(
+            model="",
+            messages=[{"role": "user", "content": "Hello"}],
+        )
+
+
 def test_request_stream_default_false():
     from gateway.schemas.chat import ChatCompletionRequest
 

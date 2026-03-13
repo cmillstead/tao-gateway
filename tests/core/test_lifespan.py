@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from gateway.subnets.registry import AdapterRegistry
+
 
 class TestLifespanStartupFailure:
     """Test that lifespan aborts when initial metagraph sync yields no data."""
@@ -90,8 +92,9 @@ class TestLifespanBittensorDisabled:
 
             test_app = FastAPI()
             async with lifespan(test_app):
-                assert not hasattr(test_app.state, "dendrite")
-                assert not hasattr(test_app.state, "metagraph_manager")
+                assert test_app.state.dendrite is None
+                assert test_app.state.miner_selector is None
+                assert isinstance(test_app.state.adapter_registry, AdapterRegistry)
 
 
 class TestLifespanShutdown:
