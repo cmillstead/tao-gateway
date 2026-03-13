@@ -1,3 +1,5 @@
+from typing import Any
+
 import structlog
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +25,8 @@ if current == 1 then
 end
 return current
 """
+_rate_limit_script: Any = None
+_rate_limit_script_redis: object | None = None  # track which Redis instance owns the script
 
 
 async def _rate_limit_auth(
@@ -47,10 +51,12 @@ async def _rate_limit_auth(
     key = f"auth_rate:{client_ip}"
     try:
         redis = await get_redis()
-        # Uses Redis EVAL command for server-side Lua execution (not Python eval)
-        raw_result = await redis.eval(  # type: ignore[misc]
-            _RATE_LIMIT_LUA, 1, key, 60
-        )
+        global _rate_limit_script, _rate_limit_script_redis  # noqa: PLW0603
+        # Re-register if Redis instance changed (e.g., after reset_redis() reconnection)
+        if _rate_limit_script is None or _rate_limit_script_redis is not redis:
+            _rate_limit_script = redis.register_script(_RATE_LIMIT_LUA)
+            _rate_limit_script_redis = redis
+        raw_result = await _rate_limit_script(keys=[key], args=[60])
         current = int(raw_result)
     except Exception:
         logger.warning("rate_limit_redis_unavailable", client_ip=client_ip)

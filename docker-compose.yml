@@ -8,6 +8,10 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DEBUG=${DEBUG:-true}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-only-insecure-key-do-not-use-in-prod}
+      - ENABLE_BITTENSOR=${ENABLE_BITTENSOR:-false}
+      - WALLET_PATH=/app/.bittensor/wallets
+    volumes:
+      - ${WALLET_PATH:-./.bittensor/wallets}:/app/.bittensor/wallets:ro
     depends_on:
       postgres:
         condition: service_healthy

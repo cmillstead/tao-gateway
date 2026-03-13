@@ -534,3 +534,6 @@ Modified files:
 - .env.example
 - tests/conftest.py
 - tests/api/test_health.py
+
+## Change Log (Round 10)
+- 2026-03-13: Code review round 10 — fixed 1 HIGH (docker compose up fails without wallet → Bittensor init now conditional via ENABLE_BITTENSOR setting) + 1 LOW (expanded sync error categories in health endpoint). 103 tests pass.

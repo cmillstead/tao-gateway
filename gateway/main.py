@@ -42,56 +42,63 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.error("startup_redis_failed")
         raise
 
-    # Bittensor SDK initialization
-    try:
-        wallet = create_wallet()
-        subtensor = create_subtensor()
-        dendrite = create_dendrite(wallet)
-    except Exception as exc:
-        logger.error("startup_bittensor_failed", error=str(exc), error_type=type(exc).__name__)
-        raise
+    # Bittensor SDK initialization (optional — disable for local dev without wallet)
+    if settings.enable_bittensor:
+        try:
+            wallet = create_wallet()
+            subtensor = create_subtensor()
+            dendrite = create_dendrite(wallet)
+        except Exception as exc:
+            logger.error("startup_bittensor_failed", error=str(exc), error_type=type(exc).__name__)
+            raise
 
-    metagraph_manager = MetagraphManager(
-        subtensor=subtensor,
-        sync_interval=settings.metagraph_sync_interval_seconds,
-        sync_timeout=settings.dendrite_timeout_seconds,
-    )
-    metagraph_manager.register_subnet(settings.sn1_netuid)
-    await metagraph_manager.start()
+        metagraph_manager = MetagraphManager(
+            subtensor=subtensor,
+            sync_interval=settings.metagraph_sync_interval_seconds,
+            sync_timeout=settings.dendrite_timeout_seconds,
+        )
+        metagraph_manager.register_subnet(settings.sn1_netuid)
+        await metagraph_manager.start()
 
-    try:
-        if metagraph_manager.get_metagraph(settings.sn1_netuid) is None:
-            logger.error(
-                "startup_metagraph_empty",
-                netuid=settings.sn1_netuid,
-            )
-            raise RuntimeError(
-                f"Initial metagraph sync failed for SN{settings.sn1_netuid} — "
-                "cannot route requests without metagraph data"
-            )
-    except BaseException:
-        await metagraph_manager.stop()
-        raise
+        try:
+            if metagraph_manager.get_metagraph(settings.sn1_netuid) is None:
+                logger.error(
+                    "startup_metagraph_empty",
+                    netuid=settings.sn1_netuid,
+                )
+                raise RuntimeError(
+                    f"Initial metagraph sync failed for SN{settings.sn1_netuid} — "
+                    "cannot route requests without metagraph data"
+                )
+        except BaseException:
+            await metagraph_manager.stop()
+            raise
 
-    miner_selector = MinerSelector(metagraph_manager)
+        miner_selector = MinerSelector(metagraph_manager)
 
-    app.state.dendrite = dendrite
-    app.state.metagraph_manager = metagraph_manager
-    app.state.miner_selector = miner_selector
+        app.state.dendrite = dendrite
+        app.state.metagraph_manager = metagraph_manager
+        app.state.miner_selector = miner_selector
 
-    logger.info("startup_bittensor_ok")
+        logger.info("startup_bittensor_ok")
+    else:
+        logger.info("startup_bittensor_skipped")
+        dendrite = None
+        metagraph_manager = None
 
     yield
 
     # Shutdown — each step guarded so one failure doesn't skip the rest
-    try:
-        await metagraph_manager.stop()
-    except Exception:
-        logger.warning("shutdown_metagraph_manager_failed", exc_info=True)
-    try:
-        await dendrite.aclose_session()
-    except Exception:
-        logger.warning("shutdown_dendrite_close_failed", exc_info=True)
+    if metagraph_manager is not None:
+        try:
+            await metagraph_manager.stop()
+        except Exception:
+            logger.warning("shutdown_metagraph_manager_failed", exc_info=True)
+    if dendrite is not None:
+        try:
+            await dendrite.aclose_session()
+        except Exception:
+            logger.warning("shutdown_dendrite_close_failed", exc_info=True)
     try:
         await engine.dispose()
     except Exception:

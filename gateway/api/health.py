@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import settings
 from gateway.core.database import get_db
-from gateway.core.redis import get_redis
+from gateway.core.redis import get_redis as _get_redis
 from gateway.schemas.health import HealthResponse, SubnetHealthStatus
 
 if TYPE_CHECKING:
@@ -36,6 +36,13 @@ _SYNC_ERROR_CATEGORIES: dict[str, str] = {
     "connection": "connection_error",
     "unreachable": "connection_error",
     "refused": "connection_error",
+    "reset": "connection_error",
+    "ssl": "ssl_error",
+    "certificate": "ssl_error",
+    "dns": "dns_error",
+    "resolve": "dns_error",
+    "authentication": "auth_error",
+    "permission": "auth_error",
 }
 
 
@@ -83,17 +90,23 @@ def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | N
     return result
 
 
+async def _try_get_redis_for_health() -> Redis | None:
+    """Best-effort Redis for health checks. Returns None if unavailable."""
+    try:
+        return await _get_redis()
+    except Exception:
+        return None
+
+
 @router.get("/v1/health", response_model=HealthResponse)
 async def health_check(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
 ) -> JSONResponse:
     now = time.monotonic()
     cached_time = _health_cache.get("time")
     if cached_time is not None and now - cached_time < _HEALTH_CACHE_TTL:
-        cached_result: HealthResponse = _health_cache["result"]
-        return JSONResponse(content=cached_result.model_dump(), status_code=200)
+        return JSONResponse(content=_health_cache["result"], status_code=200)
 
     db_status = "healthy"
     redis_status = "healthy"
@@ -104,11 +117,16 @@ async def health_check(
         db_status = "unhealthy"
         logger.warning("health_check_db_failed")
 
-    try:
-        await redis.ping()  # type: ignore[misc]
-    except Exception:
+    redis = await _try_get_redis_for_health()
+    if redis is None:
         redis_status = "unhealthy"
         logger.warning("health_check_redis_failed")
+    else:
+        try:
+            await redis.ping()  # type: ignore[misc]
+        except Exception:
+            redis_status = "unhealthy"
+            logger.warning("health_check_redis_failed")
 
     metagraph_status = _get_metagraph_status(request)
     metagraph_stale = False
@@ -125,9 +143,10 @@ async def health_check(
         metagraph=metagraph_status,
     )
 
-    # Only cache healthy responses so degraded state is not sticky
+    # Only cache healthy responses so degraded state is not sticky.
+    # Cache the serialized dict to avoid repeated model_dump() calls (L1).
     if is_healthy:
-        _health_cache["result"] = result
+        _health_cache["result"] = result.model_dump()
         _health_cache["time"] = now
     else:
         _health_cache.clear()

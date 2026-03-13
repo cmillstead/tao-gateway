@@ -526,3 +526,6 @@ Claude Opus 4.6
 - tests/services/__init__.py (new)
 - tests/integration/__init__.py (new)
 - .dockerignore (new)
+
+## Change Log
+- 2026-03-13: Code review round 10 — fixed 1 HIGH (health endpoint crashes 500 when Redis unreachable after circuit breaker opens → now degrades gracefully) + 1 MEDIUM (APP_VERSION in .env.example overrides package metadata) + 1 LOW (expanded sync error categories). Health cache now stores serialized dict. 103 tests pass.
