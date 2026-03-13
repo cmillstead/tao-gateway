@@ -1,8 +1,9 @@
 import time
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
@@ -11,7 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.config import settings
 from gateway.core.database import get_db
 from gateway.core.redis import get_redis
-from gateway.schemas.health import HealthResponse
+from gateway.schemas.health import HealthResponse, SubnetHealthStatus
+
+if TYPE_CHECKING:
+    from gateway.routing.metagraph_sync import MetagraphManager
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -29,8 +33,33 @@ def clear_health_cache() -> None:
     _health_cache.clear()
 
 
+def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | None:
+    """Extract metagraph sync status from app.state if available."""
+    mgr: MetagraphManager | None = getattr(
+        request.app.state, "metagraph_manager", None
+    )
+    if mgr is None:
+        return None
+
+    result: dict[str, SubnetHealthStatus] = {}
+    for netuid, state in mgr.get_all_states().items():
+        last_sync: str | None = None
+        if state.last_sync_time > 0:
+            last_sync = datetime.fromtimestamp(
+                state.last_sync_time, tz=UTC
+            ).isoformat()
+        result[f"sn{netuid}"] = SubnetHealthStatus(
+            netuid=netuid,
+            last_sync=last_sync,
+            is_stale=state.is_stale,
+            sync_error=state.last_sync_error,
+        )
+    return result if result else None
+
+
 @router.get("/v1/health", response_model=HealthResponse)
 async def health_check(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ) -> JSONResponse:
@@ -55,13 +84,19 @@ async def health_check(
         redis_status = "unhealthy"
         logger.warning("health_check_redis_failed")
 
-    is_healthy = db_status == redis_status == "healthy"
+    metagraph_status = _get_metagraph_status(request)
+    metagraph_stale = False
+    if metagraph_status:
+        metagraph_stale = any(s.is_stale for s in metagraph_status.values())
+
+    is_healthy = db_status == redis_status == "healthy" and not metagraph_stale
     overall = "healthy" if is_healthy else "degraded"
     result = HealthResponse(
         status=overall,
         version=settings.app_version,
         database=db_status,
         redis=redis_status,
+        metagraph=metagraph_status,
     )
 
     # Only cache healthy responses so degraded state is not sticky
