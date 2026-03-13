@@ -493,6 +493,7 @@ Claude Opus 4.6
 - 2026-03-12: Third adversarial code review — fixed 1 HIGH (rate limit broken behind proxy, is_active missing server_default) + 3 MEDIUM (email PII logged, LoginRequest min_length, test fixture DB cleanup). 42/42 tests pass.
 - 2026-03-12: Fourth adversarial code review — fixed 2 HIGH (redis.keys O(N) in tests, trusted proxy validation) + 2 MEDIUM (revoke cache race condition, duplicate conftest cleanup). 42/42 tests pass.
 - 2026-03-12: Fifth adversarial code review — fixed 2 HIGH (missing updated_at audit trail on models, hand-written Alembic migration ID) + 3 MEDIUM (rate limit sliding window → fixed window via Lua, argon2 rehash check on login+key verify, get_current_api_key returns ApiKeyInfo with org_id). JWT now includes iat claim. 43/43 tests pass.
+- 2026-03-12: Sixth adversarial code review — fixed 1 HIGH (revoke_api_key cache delete before DB commit) + 3 MEDIUM (no pagination on list_api_keys, cache corruption returns 500 instead of DB fallback, rehash commit failure kills valid request). 43/43 tests pass.
 
 ### File List
 - gateway/models/base.py (new) — DeclarativeBase shared by all models
@@ -568,3 +569,10 @@ Claude Opus 4.6
 - tests/middleware/test_auth_middleware.py (modified) — updated for ApiKeyInfo return type with org_id
 - tests/services/test_auth_service.py (modified) — added test_jwt_contains_iat_claim
 - tests/models/test_models.py (modified) — updated column assertions to include updated_at
+
+**Sixth Adversarial Code Review Fixes (2026-03-12):**
+- docker-compose.yml (modified) — added DEBUG and JWT_SECRET_KEY env vars so fresh clone starts successfully
+- gateway/services/api_key_service.py (modified) — revoke commits DB before deleting Redis cache; list_api_keys has pagination (limit/offset)
+- gateway/api/api_keys.py (modified) — list endpoint accepts limit/offset query params
+- gateway/middleware/auth.py (modified) — cache hit handles corrupt data gracefully; rehash failure doesn't kill valid request
+- gateway/services/auth_service.py (modified) — login rehash failure doesn't kill valid login

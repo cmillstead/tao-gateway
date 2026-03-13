@@ -44,8 +44,12 @@ async def get_current_api_key(
     # Try Redis cache first
     cached = await redis.get(cache_key)
     if cached is not None:
-        key_id_str, org_id_str = cached.decode().split(":", 1)
-        return ApiKeyInfo(key_id=uuid.UUID(key_id_str), org_id=uuid.UUID(org_id_str))
+        try:
+            key_id_str, org_id_str = cached.decode().split(":", 1)
+            return ApiKeyInfo(key_id=uuid.UUID(key_id_str), org_id=uuid.UUID(org_id_str))
+        except (ValueError, UnicodeDecodeError):
+            logger.warning("api_key_cache_corrupt", prefix=prefix[:12] + "****")
+            await redis.delete(cache_key)
 
     # Cache miss — look up in DB
     key_record = await db.scalar(
@@ -64,10 +68,14 @@ async def get_current_api_key(
         logger.warning("api_key_hash_mismatch", prefix=prefix[:12] + "****")
         raise AuthenticationError("Invalid API key") from exc
 
-    # Transparently upgrade hash if argon2 parameters have changed
-    if ph.check_needs_rehash(key_record.key_hash):
-        key_record.key_hash = ph.hash(token)
-        await db.commit()
+    # Best-effort rehash — don't fail the request if this errors
+    try:
+        if ph.check_needs_rehash(key_record.key_hash):
+            key_record.key_hash = ph.hash(token)
+            await db.commit()
+    except Exception:
+        logger.warning("api_key_rehash_failed", prefix=prefix[:12] + "****")
+        await db.rollback()
 
     # Cache the result: prefix → key_id:org_id, 60s TTL
     cache_value = f"{key_record.id}:{key_record.org_id}"

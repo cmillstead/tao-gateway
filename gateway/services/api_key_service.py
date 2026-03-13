@@ -33,9 +33,17 @@ async def create_api_key(
     return api_key, full_key
 
 
-async def list_api_keys(org_id: uuid.UUID, db: AsyncSession) -> list[ApiKey]:
-    """List all API keys for an organization."""
-    result = await db.scalars(select(ApiKey).where(ApiKey.org_id == org_id))
+async def list_api_keys(
+    org_id: uuid.UUID, db: AsyncSession, *, limit: int = 50, offset: int = 0
+) -> list[ApiKey]:
+    """List API keys for an organization with pagination."""
+    result = await db.scalars(
+        select(ApiKey)
+        .where(ApiKey.org_id == org_id)
+        .order_by(ApiKey.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     return list(result.all())
 
 
@@ -49,7 +57,7 @@ async def revoke_api_key(
     if key is None:
         return None
     key.is_active = False
-    await redis.delete(f"api_key:{key.prefix}")
     await db.commit()
+    await redis.delete(f"api_key:{key.prefix}")
     await db.refresh(key)
     return key

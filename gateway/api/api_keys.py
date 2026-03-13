@@ -34,8 +34,10 @@ async def create_api_key(
 async def list_api_keys(
     org_id: uuid.UUID = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[ApiKeyListItem]:
-    keys = await api_key_service.list_api_keys(org_id, db)
+    keys = await api_key_service.list_api_keys(org_id, db, limit=limit, offset=offset)
     return [
         ApiKeyListItem(
             id=str(k.id),
