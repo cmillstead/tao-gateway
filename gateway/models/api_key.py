@@ -1,14 +1,13 @@
 import uuid
-from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func, text
+from sqlalchemy import Boolean, ForeignKey, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from gateway.models.base import Base
+from gateway.models.base import Base, TimestampMixin
 
 
-class ApiKey(Base):
+class ApiKey(TimestampMixin, Base):
     __tablename__ = "api_keys"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -24,10 +23,4 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true"), nullable=False
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

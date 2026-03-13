@@ -69,7 +69,7 @@ async def revoke_api_key(
     try:
         redis = await get_redis()
     except Exception:
-        redis = None  # type: ignore[assignment]
+        redis = None
     key = await api_key_service.revoke_api_key(key_id, org_id, db, redis)
     if key is None:
         raise GatewayError("API key not found", status_code=404, error_type="not_found")

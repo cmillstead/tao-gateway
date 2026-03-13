@@ -18,6 +18,10 @@ Environment = Literal["live", "test"]
 API_KEY_PREFIX_LENGTH = 20
 MAX_KEYS_PER_ORG = 50
 _REVOCATION_TOMBSTONE_TTL = 120
+# Cache TTL for auth middleware — tombstone must be >= cache TTL
+# to prevent stale cached keys from being served after revocation.
+API_KEY_CACHE_TTL = 60
+assert _REVOCATION_TOMBSTONE_TTL >= API_KEY_CACHE_TTL
 
 
 def generate_api_key(env: Environment = "live") -> tuple[str, str, str]:

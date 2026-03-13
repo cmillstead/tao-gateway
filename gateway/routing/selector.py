@@ -1,3 +1,5 @@
+import random
+
 import bittensor as bt
 import structlog
 
@@ -63,13 +65,15 @@ class MinerSelector:
         if not eligible:
             raise SubnetUnavailableError(f"sn{netuid}", reason="no_eligible_miners")
 
-        best_uid, best_incentive, best_axon = eligible[0]
+        weights = [e[1] for e in eligible]
+        (selected,) = random.choices(eligible, weights=weights, k=1)
+        sel_uid, sel_incentive, sel_axon = selected
 
         logger.info(
             "miner_selected",
             netuid=netuid,
-            miner_uid=best_uid,
-            incentive=round(best_incentive, 6),
+            miner_uid=sel_uid,
+            incentive=round(sel_incentive, 6),
             eligible_count=len(eligible),
         )
-        return best_axon
+        return sel_axon

@@ -19,6 +19,7 @@ from gateway.routing.selector import MinerSelector
 logger = structlog.get_logger()
 
 MINER_UID_PREFIX_LEN = 8
+SSE_DONE = "data: [DONE]\n\n"
 
 
 def generate_completion_id() -> str:
@@ -254,8 +255,8 @@ class BaseAdapter(ABC):
                 miner_uid=miner_uid,
                 error=str(exc),
             )
-            yield self._sse_error("gateway_timeout", "Miner timed out", miner_uid)
-            yield "data: [DONE]\n\n"
+            yield self.sse_error("gateway_timeout", "Miner timed out", miner_uid)
+            yield SSE_DONE
             return
         except Exception as exc:
             logger.warning(
@@ -265,13 +266,13 @@ class BaseAdapter(ABC):
                 error=str(exc),
                 error_type=type(exc).__name__,
             )
-            yield self._sse_error("bad_gateway", str(exc), miner_uid)
-            yield "data: [DONE]\n\n"
+            yield self.sse_error("bad_gateway", str(exc), miner_uid)
+            yield SSE_DONE
             return
 
         if not responses:
-            yield self._sse_error("bad_gateway", "Empty response", miner_uid)
-            yield "data: [DONE]\n\n"
+            yield self.sse_error("bad_gateway", "Empty response", miner_uid)
+            yield SSE_DONE
             return
 
         stream = responses[0]
@@ -306,12 +307,12 @@ class BaseAdapter(ABC):
                 )
         except TimeoutError:
             had_error = True
-            yield self._sse_error(
+            yield self.sse_error(
                 "gateway_timeout", "Miner timed out mid-stream", miner_uid
             )
         except Exception as exc:
             had_error = True
-            yield self._sse_error("bad_gateway", str(exc), miner_uid)
+            yield self.sse_error("bad_gateway", str(exc), miner_uid)
         finally:
             logger.info(
                 "stream_cleanup",
@@ -324,10 +325,10 @@ class BaseAdapter(ABC):
         if not had_error:
             yield self.format_stream_done(chunk_id, model, created)
         else:
-            yield "data: [DONE]\n\n"
+            yield SSE_DONE
 
     @staticmethod
-    def _sse_error(error_type: str, message: str, miner_uid: str) -> str:
+    def sse_error(error_type: str, message: str, miner_uid: str) -> str:
         """Format an SSE error event."""
         data = {
             "error": {

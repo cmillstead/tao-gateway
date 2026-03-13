@@ -29,7 +29,9 @@ async def get_redis() -> Redis:
     async with _redis_lock:
         if redis_client is None:
             try:
-                client = Redis.from_url(settings.redis_url, max_connections=20)
+                client = Redis.from_url(
+                    settings.redis_url, max_connections=settings.redis_max_connections
+                )
                 await client.ping()  # type: ignore[misc]
                 redis_client = client
             except Exception:
@@ -39,6 +41,19 @@ async def get_redis() -> Redis:
     return redis_client
 
 
+async def _close_client(*, suppress_errors: bool) -> None:
+    """Internal helper to close and clear the cached Redis client."""
+    global redis_client  # noqa: PLW0603
+    async with _redis_lock:
+        if redis_client is not None:
+            try:
+                await redis_client.aclose()
+            except Exception:
+                if not suppress_errors:
+                    raise
+            redis_client = None
+
+
 async def reset_redis() -> None:
     """Reset the cached client so the next call to get_redis() reconnects.
 
@@ -46,22 +61,11 @@ async def reset_redis() -> None:
     trigger reconnection on the next request instead of returning a
     broken client forever.
     """
-    global redis_client  # noqa: PLW0603
-    async with _redis_lock:
-        if redis_client is not None:
-            try:
-                await redis_client.aclose()
-            except Exception:
-                pass
-            redis_client = None
+    await _close_client(suppress_errors=True)
 
 
 async def close_redis() -> None:
-    global redis_client  # noqa: PLW0603
-    async with _redis_lock:
-        if redis_client is not None:
-            await redis_client.aclose()
-            redis_client = None
+    await _close_client(suppress_errors=False)
 
 
 async def try_get_redis(*, reset_on_failure: bool = False) -> Redis | None:

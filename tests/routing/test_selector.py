@@ -42,21 +42,23 @@ def manager_with_metagraph(mock_metagraph: MagicMock) -> MetagraphManager:
 
 
 class TestMinerSelector:
-    def test_selects_highest_incentive_miner(
+    def test_selects_from_eligible_miners(
         self, manager_with_metagraph: MetagraphManager, mock_metagraph: MagicMock
     ) -> None:
         selector = MinerSelector(manager_with_metagraph)
         axon = selector.select_miner(1)
-        # UID 0 has highest incentive (0.5)
-        assert axon is mock_metagraph.axons[0]
+        # Should select from eligible miners (UID 0 or UID 2 — not UID 1 which has 0 incentive)
+        assert axon in (mock_metagraph.axons[0], mock_metagraph.axons[2])
 
     def test_excludes_zero_incentive_miners(
-        self, manager_with_metagraph: MetagraphManager
+        self, manager_with_metagraph: MetagraphManager, mock_metagraph: MagicMock
     ) -> None:
         selector = MinerSelector(manager_with_metagraph)
-        axon = selector.select_miner(1)
-        # UID 1 has zero incentive — should not be selected even if there
-        assert axon.ip != ""
+        # Run multiple times to verify zero-incentive miner is never selected
+        for _ in range(100):
+            axon = selector.select_miner(1)
+            # UID 1 has zero incentive — must never be selected
+            assert axon is not mock_metagraph.axons[1]
 
     def test_excludes_miners_without_axon(self) -> None:
         metagraph = MagicMock()
@@ -117,7 +119,52 @@ class TestMinerSelector:
         ]
         selector = MinerSelector(_make_manager(metagraph))
         axon = selector.select_miner(1)
-        assert axon is metagraph.axons[1]
+        # UID 0 is offline, so only UID 1 and UID 2 are eligible
+        assert axon in (metagraph.axons[1], metagraph.axons[2])
+
+    def test_weighted_selection_distributes_across_miners(self) -> None:
+        """Over many selections, traffic distributes roughly proportional to incentive."""
+        metagraph = MagicMock()
+        metagraph.n = 3
+        metagraph.incentive = np.array([0.6, 0.3, 0.1])
+        metagraph.stake = np.array([100.0, 100.0, 100.0])
+        metagraph.axons = [
+            MagicMock(ip="1.2.3.4", port=8091, hotkey="aaa"),
+            MagicMock(ip="5.6.7.8", port=8091, hotkey="bbb"),
+            MagicMock(ip="9.10.11.12", port=8091, hotkey="ccc"),
+        ]
+        selector = MinerSelector(_make_manager(metagraph))
+
+        counts: dict[str, int] = {"aaa": 0, "bbb": 0, "ccc": 0}
+        for _ in range(1000):
+            axon = selector.select_miner(1)
+            counts[axon.hotkey] += 1
+
+        # With weights [0.6, 0.3, 0.1], over 1000 trials:
+        # aaa should get roughly 600, bbb ~300, ccc ~100
+        # Use generous bounds to avoid flakiness
+        assert counts["aaa"] > 400, f"Expected aaa > 400, got {counts['aaa']}"
+        assert counts["bbb"] > 150, f"Expected bbb > 150, got {counts['bbb']}"
+        assert counts["ccc"] > 20, f"Expected ccc > 20, got {counts['ccc']}"
+        # Most traffic should go to the highest-incentive miner
+        assert counts["aaa"] > counts["bbb"] > counts["ccc"]
+
+    def test_single_eligible_miner_always_selected(self) -> None:
+        """When only one miner is eligible, it is always selected."""
+        metagraph = MagicMock()
+        metagraph.n = 3
+        metagraph.incentive = np.array([0.0, 0.5, 0.0])
+        metagraph.stake = np.array([0.0, 100.0, 0.0])
+        metagraph.axons = [
+            MagicMock(ip="", port=0),
+            MagicMock(ip="5.6.7.8", port=8091),
+            MagicMock(ip="", port=0),
+        ]
+        selector = MinerSelector(_make_manager(metagraph))
+
+        for _ in range(100):
+            axon = selector.select_miner(1)
+            assert axon is metagraph.axons[1]
 
     def test_port_zero_excluded(self) -> None:
         metagraph = MagicMock()
@@ -134,10 +181,11 @@ class TestMinerSelector:
 
     def test_cache_invalidated_on_new_generation(self) -> None:
         """Cache should miss when sync_generation changes."""
+        # Use a single eligible miner so selection is deterministic
         metagraph = MagicMock()
         metagraph.n = 2
-        metagraph.incentive = np.array([0.5, 0.3])
-        metagraph.stake = np.array([100.0, 50.0])
+        metagraph.incentive = np.array([0.5, 0.0])
+        metagraph.stake = np.array([100.0, 0.0])
         metagraph.axons = [
             MagicMock(ip="1.2.3.4", port=8091),
             MagicMock(ip="5.6.7.8", port=8091),
@@ -150,11 +198,11 @@ class TestMinerSelector:
         axon1 = selector.select_miner(1)
         assert axon1 is metagraph.axons[0]
 
-        # Simulate a new sync — new metagraph with different ranking
+        # Simulate a new sync — new metagraph with only UID 1 eligible
         new_metagraph = MagicMock()
         new_metagraph.n = 2
-        new_metagraph.incentive = np.array([0.1, 0.9])
-        new_metagraph.stake = np.array([50.0, 100.0])
+        new_metagraph.incentive = np.array([0.0, 0.9])
+        new_metagraph.stake = np.array([0.0, 100.0])
         new_metagraph.axons = [
             MagicMock(ip="1.2.3.4", port=8091),
             MagicMock(ip="5.6.7.8", port=8091),

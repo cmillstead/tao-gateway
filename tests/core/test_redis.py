@@ -52,3 +52,38 @@ async def test_close_redis_cleans_up():
 
     await redis_module.close_redis()
     assert redis_module.redis_client is None
+
+
+@pytest.mark.asyncio
+async def test_try_get_redis_returns_none_when_circuit_breaker_open():
+    """try_get_redis returns None (not raises) when Redis is unavailable."""
+    redis_module.redis_client = None
+    redis_module._last_failure_time = time.monotonic()
+
+    result = await redis_module.try_get_redis()
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_try_get_redis_reset_on_failure_clears_client():
+    """try_get_redis with reset_on_failure=True clears a broken client."""
+    # Set a non-None client and trigger circuit breaker
+    redis_module.redis_client = None
+    redis_module._last_failure_time = time.monotonic()
+
+    result = await redis_module.try_get_redis(reset_on_failure=True)
+    assert result is None
+    # Client should still be None (reset was called)
+    assert redis_module.redis_client is None
+
+
+@pytest.mark.asyncio
+async def test_reset_redis_clears_cached_client():
+    """reset_redis closes and clears the cached client."""
+    # Get a real client first
+    client = await redis_module.get_redis()
+    assert client is not None
+    assert redis_module.redis_client is not None
+
+    await redis_module.reset_redis()
+    assert redis_module.redis_client is None
