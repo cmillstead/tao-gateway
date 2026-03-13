@@ -103,6 +103,27 @@ async def test_health_ok_without_metagraph_manager(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_health_degraded_when_redis_down(client: AsyncClient) -> None:
+    """Health returns degraded (not 500) when Redis is completely unavailable."""
+    from unittest.mock import patch
+
+    from gateway.api.health import clear_health_cache
+
+    clear_health_cache()
+
+    with patch(
+        "gateway.api.health._get_redis",
+        side_effect=ConnectionError("Redis unavailable (circuit breaker open)"),
+    ):
+        response = await client.get("/v1/health")
+        data = response.json()
+        assert response.status_code == 503
+        assert data["status"] == "degraded"
+        assert data["redis"] == "unhealthy"
+    clear_health_cache()
+
+
+@pytest.mark.asyncio
 async def test_health_degraded_when_metagraph_stale(client: AsyncClient) -> None:
     """Health endpoint returns degraded when metagraph is stale."""
     from gateway.api.health import clear_health_cache
