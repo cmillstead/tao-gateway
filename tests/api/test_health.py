@@ -9,6 +9,8 @@ async def test_health_returns_200(client: AsyncClient) -> None:
     data = response.json()
     assert data["status"] == "healthy"
     assert data["version"] == "0.1.0"
+    assert data["database"] == "healthy"
+    assert data["redis"] == "healthy"
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,8 @@
 import os
 
-# Point tests at the test database BEFORE any gateway imports.
-# This overrides the default in gateway.core.config.Settings.
+# Point tests at the test database and enable debug mode BEFORE any gateway imports.
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://tao:tao@localhost:5432/tao_gateway_test")
+os.environ.setdefault("DEBUG", "true")
 
 from collections.abc import AsyncGenerator  # noqa: E402
 
@@ -16,23 +16,23 @@ from gateway.main import app  # noqa: E402
 from gateway.services.auth_service import create_jwt_token  # noqa: E402
 
 
-@pytest.fixture(autouse=True)
-async def _clean_state() -> AsyncGenerator[None, None]:
-    """Truncate DB tables and flush Redis rate limit keys before and after each test."""
+async def _flush_test_state() -> None:
+    """Truncate DB tables and flush Redis test keys."""
     redis = await get_redis()
     async with engine.begin() as conn:
         await conn.execute(text("TRUNCATE TABLE api_keys, organizations CASCADE"))
-    for key in await redis.keys("auth_rate:*"):
+    async for key in redis.scan_iter("auth_rate:*"):
         await redis.delete(key)
-    for key in await redis.keys("api_key:*"):
+    async for key in redis.scan_iter("api_key:*"):
         await redis.delete(key)
+
+
+@pytest.fixture(autouse=True)
+async def _clean_state() -> AsyncGenerator[None, None]:
+    """Truncate DB tables and flush Redis test keys before and after each test."""
+    await _flush_test_state()
     yield
-    async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE TABLE api_keys, organizations CASCADE"))
-    for key in await redis.keys("auth_rate:*"):
-        await redis.delete(key)
-    for key in await redis.keys("api_key:*"):
-        await redis.delete(key)
+    await _flush_test_state()
 
 
 @pytest.fixture

@@ -11,4 +11,11 @@ COPY gateway/ gateway/
 COPY alembic.ini ./
 COPY migrations/ migrations/
 
+RUN groupadd --system app && useradd --system --gid app app \
+    && chown -R app:app /app
+USER app
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health')"]
+
 CMD ["uv", "run", "uvicorn", "gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]

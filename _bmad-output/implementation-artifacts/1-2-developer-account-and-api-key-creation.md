@@ -491,6 +491,7 @@ Claude Opus 4.6
 - 2026-03-12: Adversarial code review — fixed 3 HIGH (timing attack, no rate limiting, tests on prod DB) + 3 MEDIUM (false File List claim, unsafe fixture, no per-test isolation). 40/40 tests pass.
 - 2026-03-12: Second adversarial code review — fixed 2 HIGH (revoked key cache invalidation, password max_length DoS) + 4 MEDIUM (rate limit race condition, JWT UUID validation, env type constraint, rate limit test coverage). 42/42 tests pass.
 - 2026-03-12: Third adversarial code review — fixed 1 HIGH (rate limit broken behind proxy, is_active missing server_default) + 3 MEDIUM (email PII logged, LoginRequest min_length, test fixture DB cleanup). 42/42 tests pass.
+- 2026-03-12: Fourth adversarial code review — fixed 2 HIGH (redis.keys O(N) in tests, trusted proxy validation) + 2 MEDIUM (revoke cache race condition, duplicate conftest cleanup). 42/42 tests pass.
 
 ### File List
 - gateway/models/base.py (new) — DeclarativeBase shared by all models
