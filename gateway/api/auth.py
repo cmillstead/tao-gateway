@@ -55,6 +55,7 @@ async def signup(request: SignupRequest, db: AsyncSession = Depends(get_db)) -> 
     try:
         org = await auth_service.signup(request.email, request.password, db)
     except IntegrityError as exc:
+        await db.rollback()
         raise GatewayError(
             "Email already registered", status_code=409, error_type="conflict"
         ) from exc

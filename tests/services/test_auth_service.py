@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from argon2 import PasswordHasher
 from jose import jwt
@@ -46,4 +48,17 @@ def test_jwt_verify_invalid_token() -> None:
 def test_jwt_verify_empty_token() -> None:
     with pytest.raises(AuthenticationError) as exc_info:
         verify_jwt_token("")
+    assert exc_info.value.status_code == 401
+
+
+def test_jwt_verify_expired_token() -> None:
+    """Expired JWT is rejected with AuthenticationError."""
+    expired_payload = {
+        "sub": "550e8400-e29b-41d4-a716-446655440000",
+        "iat": datetime.now(UTC) - timedelta(hours=2),
+        "exp": datetime.now(UTC) - timedelta(hours=1),
+    }
+    token = jwt.encode(expired_payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    with pytest.raises(AuthenticationError) as exc_info:
+        verify_jwt_token(token)
     assert exc_info.value.status_code == 401

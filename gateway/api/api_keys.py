@@ -1,11 +1,14 @@
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.status import HTTP_201_CREATED
 
 from gateway.core.database import get_db
+from gateway.core.exceptions import GatewayError
+from gateway.core.redis import get_redis
 from gateway.middleware.auth import get_current_org_id
 from gateway.schemas.api_keys import ApiKeyCreateRequest, ApiKeyCreateResponse, ApiKeyListItem
 from gateway.services import api_key_service
@@ -34,8 +37,8 @@ async def create_api_key(
 async def list_api_keys(
     org_id: uuid.UUID = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
 ) -> list[ApiKeyListItem]:
     keys = await api_key_service.list_api_keys(org_id, db, limit=limit, offset=offset)
     return [
@@ -47,3 +50,17 @@ async def list_api_keys(
         )
         for k in keys
     ]
+
+
+@router.delete("/api-keys/{key_id}", status_code=200)
+async def revoke_api_key(
+    key_id: uuid.UUID,
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+) -> dict[str, str]:
+    key = await api_key_service.revoke_api_key(key_id, org_id, db, redis)
+    if key is None:
+        raise GatewayError("API key not found", status_code=404, error_type="not_found")
+    logger.info("api_key_revoked", org_id=str(org_id), key_id=str(key_id))
+    return {"message": "API key revoked"}

@@ -11,10 +11,12 @@ from gateway.core.logging import setup_logging
 from gateway.core.redis import close_redis
 from gateway.middleware.error_handler import gateway_exception_handler
 
+# Configure structlog before any logger calls — including module-level init
+setup_logging()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    setup_logging()
     yield
     await engine.dispose()
     await close_redis()

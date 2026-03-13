@@ -30,14 +30,15 @@ async def _flush_test_state() -> None:
     """Truncate DB tables and flush Redis test keys."""
     clear_health_cache()
     redis = await get_redis()
-    # Dynamically resolve table names from model metadata
-    table_names = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
+    # Quote table names to prevent SQL injection from unexpected __tablename__ values
+    table_names = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
     async with engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
-    async for key in redis.scan_iter("auth_rate:*"):
-        await redis.delete(key)
-    async for key in redis.scan_iter("api_key:*"):
-        await redis.delete(key)
+    # Batch-delete Redis keys instead of one-at-a-time round-trips
+    for pattern in ("auth_rate:*", "api_key:*"):
+        keys = [k async for k in redis.scan_iter(pattern)]
+        if keys:
+            await redis.delete(*keys)
 
 
 @pytest.fixture(autouse=True)

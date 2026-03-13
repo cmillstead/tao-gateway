@@ -1,9 +1,17 @@
 import warnings
+from importlib.metadata import version as _pkg_version
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 _INSECURE_DEFAULT_SECRET = "change-me-in-production"
+
+
+def _get_app_version() -> str:
+    try:
+        return _pkg_version("tao-gateway")
+    except Exception:
+        return "0.0.0-dev"
 
 
 class Settings(BaseSettings):
@@ -15,7 +23,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "TaoGateway"
-    app_version: str = "0.1.0"
+    app_version: str = _get_app_version()
     debug: bool = False
 
     # Auth
