@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings
 
 _INSECURE_DEFAULT_SECRET = "change-me-in-production"
 _MIN_JWT_SECRET_LENGTH = 32
+_INSECURE_MARKERS = ["change-me", "insecure", "do-not-use", "example", "placeholder"]
 
 
 def _get_app_version() -> str:
@@ -52,10 +53,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_jwt_secret(self) -> "Settings":
-        if self.jwt_secret_key == _INSECURE_DEFAULT_SECRET:
+        secret = self.jwt_secret_key
+        if secret == _INSECURE_DEFAULT_SECRET:
             if self.debug:
                 warnings.warn(
                     "JWT_SECRET_KEY is using the insecure default. Set JWT_SECRET_KEY in your env.",
+                    UserWarning,
                     stacklevel=2,
                 )
             else:
@@ -63,11 +66,18 @@ class Settings(BaseSettings):
                     "JWT_SECRET_KEY must be set to a secure value in production. "
                     'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
                 )
-        elif len(self.jwt_secret_key) < _MIN_JWT_SECRET_LENGTH and not self.debug:
-            raise ValueError(
-                f"JWT_SECRET_KEY must be at least {_MIN_JWT_SECRET_LENGTH} characters. "
-                'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
-            )
+        elif not self.debug:
+            lower = secret.lower()
+            if any(marker in lower for marker in _INSECURE_MARKERS):
+                raise ValueError(
+                    "JWT_SECRET_KEY contains an insecure marker and cannot be used in production. "
+                    'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
+                )
+            if len(secret) < _MIN_JWT_SECRET_LENGTH:
+                raise ValueError(
+                    f"JWT_SECRET_KEY must be at least {_MIN_JWT_SECRET_LENGTH} characters. "
+                    'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
+                )
         return self
 
 
