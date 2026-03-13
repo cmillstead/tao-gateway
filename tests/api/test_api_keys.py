@@ -158,3 +158,29 @@ async def test_list_api_keys_pagination_bounds(client: AsyncClient) -> None:
 
     resp = await client.get("/dashboard/api-keys?offset=-1", headers=headers)
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_rejects_when_limit_reached(client: AsyncClient) -> None:
+    """Creating more than MAX_KEYS_PER_ORG active keys returns 422."""
+    from unittest.mock import patch
+
+    token = await _signup_and_get_jwt(client, "keylimit@test.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("gateway.services.api_key_service.MAX_KEYS_PER_ORG", 3):
+        for i in range(3):
+            resp = await client.post(
+                "/dashboard/api-keys",
+                json={"environment": "test"},
+                headers=headers,
+            )
+            assert resp.status_code == 201, f"Key {i+1} failed: {resp.text}"
+
+        resp = await client.post(
+            "/dashboard/api-keys",
+            json={"environment": "test"},
+            headers=headers,
+        )
+        assert resp.status_code == 422
+        assert "Maximum" in resp.json()["error"]["message"]
