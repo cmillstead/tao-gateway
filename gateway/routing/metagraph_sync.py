@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import copy
 import time
 from dataclasses import dataclass
 
@@ -52,12 +53,13 @@ class MetagraphManager:
         return self._subnets.get(netuid)
 
     def get_all_states(self) -> dict[int, SubnetMetagraphState]:
-        """Return all registered subnet states for health reporting.
+        """Return shallow copies of all subnet states for health reporting.
 
-        Note: returned SubnetMetagraphState objects are shared references —
-        callers should treat them as read-only.
+        Callers get independent copies — mutations do not affect the manager.
+        The metagraph reference is shared (read-only by convention) to avoid
+        expensive deep copies.
         """
-        return dict(self._subnets)
+        return {netuid: copy.copy(state) for netuid, state in self._subnets.items()}
 
     async def sync_all(self) -> None:
         """Sync all registered subnet metagraphs."""

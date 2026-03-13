@@ -63,6 +63,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "startup_metagraph_empty",
             netuid=settings.sn1_netuid,
         )
+        raise RuntimeError(
+            f"Initial metagraph sync failed for SN{settings.sn1_netuid} — "
+            "cannot route requests without metagraph data"
+        )
 
     miner_selector = MinerSelector(metagraph_manager)
 
@@ -76,6 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Shutdown
     await metagraph_manager.stop()
+    await dendrite.aclose_session()
     await engine.dispose()
     await close_redis()
 

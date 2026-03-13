@@ -90,12 +90,24 @@ async def _flush_test_state() -> None:
             await redis.delete(*keys)
 
 
+def _reset_metagraph_state() -> None:
+    """Reset metagraph test state to freshly-synced defaults."""
+    state = _test_metagraph_manager.get_state(1)
+    if state is not None:
+        state.metagraph = _mock_metagraph
+        state.last_sync_time = _time.time()
+        state.last_sync_error = None
+        state.consecutive_failures = 0
+
+
 @pytest.fixture(autouse=True)
 async def _clean_state() -> AsyncGenerator[None, None]:
-    """Truncate DB tables and flush Redis test keys before and after each test."""
+    """Truncate DB tables, flush Redis, and reset metagraph state."""
     await _flush_test_state()
+    _reset_metagraph_state()
     yield
     await _flush_test_state()
+    _reset_metagraph_state()
 
 
 @pytest.fixture

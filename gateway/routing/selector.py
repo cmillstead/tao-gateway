@@ -24,7 +24,7 @@ class MinerSelector:
         """
         metagraph = self._metagraph_manager.get_metagraph(netuid)
         if metagraph is None:
-            raise SubnetUnavailableError(f"sn{netuid}: no metagraph")
+            raise SubnetUnavailableError(f"sn{netuid}", reason="no_metagraph")
 
         eligible: list[tuple[int, float, bt.AxonInfo]] = []
         for uid in range(int(metagraph.n)):
@@ -42,7 +42,7 @@ class MinerSelector:
             eligible.append((uid, incentive, axon))
 
         if not eligible:
-            raise SubnetUnavailableError(f"sn{netuid}: no eligible miners")
+            raise SubnetUnavailableError(f"sn{netuid}", reason="no_eligible_miners")
 
         eligible.sort(key=lambda x: x[1], reverse=True)
         best_uid, best_incentive, best_axon = eligible[0]

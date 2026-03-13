@@ -127,14 +127,48 @@ class TestMetagraphManager:
         assert state.is_stale is True
 
     @pytest.mark.asyncio
-    async def test_start_and_stop(
+    async def test_start_runs_initial_sync(
         self, manager: MetagraphManager, mock_subtensor: MagicMock
     ) -> None:
-        manager._sync_interval = 0.01  # fast for test
         await manager.start()
-        await asyncio.sleep(0.05)
-        await manager.stop()
-        # Should have synced at least once
         state = manager.get_state(1)
         assert state is not None
         assert state.metagraph is not None
+        assert state.consecutive_failures == 0
+        await manager.stop()
+
+    @pytest.mark.asyncio
+    async def test_background_loop_syncs_periodically(
+        self, mock_subtensor: MagicMock
+    ) -> None:
+        """Verify the background loop fires after the initial sync."""
+        sync_count = 0
+        original_metagraph = mock_subtensor.metagraph
+
+        def counting_metagraph(netuid: int) -> MagicMock:
+            nonlocal sync_count
+            sync_count += 1
+            return original_metagraph(netuid)
+
+        mock_subtensor.metagraph = counting_metagraph
+
+        mgr = MetagraphManager(subtensor=mock_subtensor, sync_interval=0.01)
+        mgr.register_subnet(1)
+        await mgr.start()  # initial sync = 1
+        # Wait long enough for at least one background sync
+        await asyncio.sleep(0.1)
+        await mgr.stop()
+        # Must have synced more than once (initial + at least one loop iteration)
+        assert sync_count >= 2, f"Expected >=2 syncs, got {sync_count}"
+
+    @pytest.mark.asyncio
+    async def test_escalation_after_repeated_failures(
+        self, manager: MetagraphManager, mock_subtensor: MagicMock
+    ) -> None:
+        """Log level escalates from warning to error after threshold consecutive failures."""
+        mock_subtensor.metagraph.side_effect = ConnectionError("down")
+        for _ in range(6):  # exceed _ESCALATION_THRESHOLD (5)
+            await manager.sync_all()
+        state = manager.get_state(1)
+        assert state is not None
+        assert state.consecutive_failures == 6

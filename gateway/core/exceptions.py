@@ -29,9 +29,10 @@ class MinerInvalidResponseError(GatewayError):
 
 
 class SubnetUnavailableError(GatewayError):
-    def __init__(self, subnet: str) -> None:
+    def __init__(self, subnet: str, reason: str = "unavailable") -> None:
         super().__init__(f"Subnet {subnet} is unavailable", 503, "subnet_unavailable")
         self.subnet = subnet
+        self.reason = reason
 
 
 class RateLimitExceededError(GatewayError):

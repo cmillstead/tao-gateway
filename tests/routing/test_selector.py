@@ -68,8 +68,9 @@ class TestMinerSelector:
         mgr = MagicMock(spec=MetagraphManager)
         mgr.get_metagraph.return_value = None
         selector = MinerSelector(mgr)
-        with pytest.raises(SubnetUnavailableError):
+        with pytest.raises(SubnetUnavailableError) as exc_info:
             selector.select_miner(1)
+        assert exc_info.value.reason == "no_metagraph"
 
     def test_raises_when_all_miners_zero_incentive(self) -> None:
         metagraph = MagicMock()
@@ -83,8 +84,9 @@ class TestMinerSelector:
         mgr = MagicMock(spec=MetagraphManager)
         mgr.get_metagraph.return_value = metagraph
         selector = MinerSelector(mgr)
-        with pytest.raises(SubnetUnavailableError):
+        with pytest.raises(SubnetUnavailableError) as exc_info:
             selector.select_miner(1)
+        assert exc_info.value.reason == "no_eligible_miners"
 
     def test_excludes_zero_stake_miners(self) -> None:
         metagraph = MagicMock()
