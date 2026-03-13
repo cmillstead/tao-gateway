@@ -22,15 +22,16 @@ from gateway.services.api_key_service import generate_api_key
 
 
 @pytest.mark.asyncio
-async def test_api_key_cache_hit_skips_db() -> None:
-    """Cache hit: Redis returns cached key_id:org_id, DB is never queried."""
+async def test_api_key_cache_hit_verifies_hash() -> None:
+    """Cache hit: Redis returns cached key_hash:key_id:org_id, hash is verified."""
     key_id = uuid.uuid4()
     org_id = uuid.uuid4()
-    full_key, prefix, _ = generate_api_key("live")
+    full_key, prefix, key_hash = generate_api_key("live")
 
     mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=full_key)
     mock_redis = AsyncMock()
-    mock_redis.get.return_value = f"{key_id}:{org_id}".encode()
+    # Cache now stores key_hash:key_id:org_id
+    mock_redis.get.return_value = f"{key_hash}:{key_id}:{org_id}".encode()
     mock_db = AsyncMock()
 
     result = await get_current_api_key(mock_credentials, mock_db, mock_redis)
@@ -40,6 +41,24 @@ async def test_api_key_cache_hit_skips_db() -> None:
     assert result.org_id == org_id
     mock_redis.get.assert_called_once_with(f"api_key:{prefix}")
     mock_db.scalar.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_api_key_cache_hit_wrong_token_rejected() -> None:
+    """Cache hit with wrong token: hash verification fails even on cache hit."""
+    key_id = uuid.uuid4()
+    org_id = uuid.uuid4()
+    _, _, real_hash = generate_api_key("live")
+    wrong_key, wrong_prefix, _ = generate_api_key("live")
+
+    mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=wrong_key)
+    mock_redis = AsyncMock()
+    # Cache has hash of the real key, but we're sending a different key
+    mock_redis.get.return_value = f"{real_hash}:{key_id}:{org_id}".encode()
+    mock_db = AsyncMock()
+
+    with pytest.raises(AuthenticationError):
+        await get_current_api_key(mock_credentials, mock_db, mock_redis)
 
 
 @pytest.mark.asyncio
@@ -65,9 +84,14 @@ async def test_api_key_cache_miss_valid_key_caches_result() -> None:
     assert isinstance(result, ApiKeyInfo)
     assert result.key_id == key_id
     assert result.org_id == org_id
-    mock_redis.set.assert_called_once_with(
-        f"api_key:{prefix}", f"{key_id}:{org_id}", ex=60
-    )
+    # Cache value now includes hash
+    mock_redis.set.assert_called_once()
+    call_args = mock_redis.set.call_args
+    cache_val = call_args[0][1]
+    assert cache_val.startswith("$argon2")
+    assert str(key_id) in cache_val
+    assert str(org_id) in cache_val
+    assert call_args[1]["ex"] == 60
 
 
 @pytest.mark.asyncio
@@ -114,6 +138,23 @@ async def test_api_key_missing_credentials_returns_401() -> None:
 
     with pytest.raises(AuthenticationError):
         await get_current_api_key(None, mock_db, mock_redis)
+
+
+@pytest.mark.asyncio
+async def test_api_key_revoked_tombstone_returns_401() -> None:
+    """Revoked key (tombstone in cache) returns 401 immediately."""
+    full_key, prefix, _ = generate_api_key("live")
+
+    mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=full_key)
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = b"__revoked__"
+    mock_db = AsyncMock()
+
+    with pytest.raises(AuthenticationError):
+        await get_current_api_key(mock_credentials, mock_db, mock_redis)
+
+    # DB should never be queried for a tombstoned key
+    mock_db.scalar.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -20,3 +20,7 @@ class ApiKeyListItem(BaseModel):
     prefix: str
     is_active: bool
     created_at: datetime
+
+
+class ApiKeyRevokeResponse(BaseModel):
+    message: str

@@ -10,7 +10,12 @@ from gateway.core.database import get_db
 from gateway.core.exceptions import GatewayError
 from gateway.core.redis import get_redis
 from gateway.middleware.auth import get_current_org_id
-from gateway.schemas.api_keys import ApiKeyCreateRequest, ApiKeyCreateResponse, ApiKeyListItem
+from gateway.schemas.api_keys import (
+    ApiKeyCreateRequest,
+    ApiKeyCreateResponse,
+    ApiKeyListItem,
+    ApiKeyRevokeResponse,
+)
 from gateway.services import api_key_service
 
 logger = structlog.get_logger()
@@ -52,15 +57,15 @@ async def list_api_keys(
     ]
 
 
-@router.delete("/api-keys/{key_id}", status_code=200)
+@router.delete("/api-keys/{key_id}", status_code=200, response_model=ApiKeyRevokeResponse)
 async def revoke_api_key(
     key_id: uuid.UUID,
     org_id: uuid.UUID = Depends(get_current_org_id),
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
-) -> dict[str, str]:
+) -> ApiKeyRevokeResponse:
     key = await api_key_service.revoke_api_key(key_id, org_id, db, redis)
     if key is None:
         raise GatewayError("API key not found", status_code=404, error_type="not_found")
     logger.info("api_key_revoked", org_id=str(org_id), key_id=str(key_id))
-    return {"message": "API key revoked"}
+    return ApiKeyRevokeResponse(message="API key revoked")

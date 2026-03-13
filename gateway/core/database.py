@@ -1,19 +1,40 @@
 from collections.abc import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from gateway.core.config import settings
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=False,
-    pool_size=20,
-    max_overflow=10,
-    pool_pre_ping=True,
-)
-async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+_engine: AsyncEngine | None = None
+_session_factory: async_sessionmaker[AsyncSession] | None = None
+
+
+def get_engine() -> AsyncEngine:
+    global _engine  # noqa: PLW0603
+    if _engine is None:
+        _engine = create_async_engine(
+            settings.database_url,
+            echo=settings.debug,
+            pool_size=20,
+            max_overflow=10,
+            pool_pre_ping=True,
+        )
+    return _engine
+
+
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    global _session_factory  # noqa: PLW0603
+    if _session_factory is None:
+        _session_factory = async_sessionmaker(
+            get_engine(), class_=AsyncSession, expire_on_commit=False
+        )
+    return _session_factory
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with async_session_factory() as session:
+    async with get_session_factory()() as session:
         yield session

@@ -42,15 +42,31 @@ async def get_current_api_key(
     prefix = token[:API_KEY_PREFIX_LENGTH]
     cache_key = f"api_key:{prefix}"
 
-    # Try Redis cache first
+    # Check for revocation tombstone first
     cached = await redis.get(cache_key)
     if cached is not None:
         try:
-            key_id_str, org_id_str = cached.decode().split(":", 1)
-            return ApiKeyInfo(key_id=uuid.UUID(key_id_str), org_id=uuid.UUID(org_id_str))
-        except (ValueError, UnicodeDecodeError):
+            cached_str = cached.decode()
+        except UnicodeDecodeError:
             logger.warning("api_key_cache_corrupt", prefix=prefix[:12] + "****")
             await redis.delete(cache_key)
+            cached_str = None
+
+        if cached_str == "__revoked__":
+            raise AuthenticationError("Invalid API key")
+
+        # Cache stores key_hash:key_id:org_id — always verify hash even on hit
+        if cached_str is not None:
+            try:
+                cached_hash, key_id_str, org_id_str = cached_str.split(":", 2)
+                ph.verify(cached_hash, token)
+                return ApiKeyInfo(key_id=uuid.UUID(key_id_str), org_id=uuid.UUID(org_id_str))
+            except VerifyMismatchError as exc:
+                logger.warning("api_key_hash_mismatch", prefix=prefix[:12] + "****")
+                raise AuthenticationError("Invalid API key") from exc
+            except (ValueError, IndexError):
+                logger.warning("api_key_cache_corrupt", prefix=prefix[:12] + "****")
+                await redis.delete(cache_key)
 
     # Cache miss — look up in DB
     key_record = await db.scalar(
@@ -70,16 +86,18 @@ async def get_current_api_key(
         raise AuthenticationError("Invalid API key") from exc
 
     # Best-effort rehash — don't fail the request if this errors
+    current_hash = key_record.key_hash
     try:
         if ph.check_needs_rehash(key_record.key_hash):
-            key_record.key_hash = ph.hash(token)
+            current_hash = ph.hash(token)
+            key_record.key_hash = current_hash
             await db.commit()
     except Exception:
         logger.warning("api_key_rehash_failed", prefix=prefix[:12] + "****")
         await db.rollback()
 
-    # Cache the result: prefix → key_id:org_id, 60s TTL
-    cache_value = f"{key_record.id}:{key_record.org_id}"
+    # Cache: key_hash:key_id:org_id — hash included so cache hits still verify
+    cache_value = f"{current_hash}:{key_record.id}:{key_record.org_id}"
     await redis.set(cache_key, cache_value, ex=60)
     return ApiKeyInfo(key_id=key_record.id, org_id=key_record.org_id)
 

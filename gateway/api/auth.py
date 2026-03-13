@@ -65,5 +65,10 @@ async def signup(request: SignupRequest, db: AsyncSession = Depends(get_db)) -> 
 
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)) -> LoginResponse:
-    token = await auth_service.login(request.email, request.password, db)
+    try:
+        token = await auth_service.login(request.email, request.password, db)
+    except GatewayError:
+        logger.info("login_failed")
+        raise
+    logger.info("login_success")
     return LoginResponse(access_token=token)

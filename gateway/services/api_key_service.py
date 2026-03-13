@@ -83,14 +83,17 @@ async def revoke_api_key(
         return None
 
     cache_key = f"api_key:{key.prefix}"
-    # Delete cache first — worst case on crash: cache miss triggers a DB
-    # lookup that still sees the key as active (no security hole).
-    try:
-        await redis.delete(cache_key)
-    except Exception:
-        logger.warning("revoke_cache_delete_failed", key_id=str(key_id))
 
     key.is_active = False
     await db.commit()
     await db.refresh(key)
+
+    # Set tombstone AFTER DB commit so concurrent requests that re-cache
+    # during the commit window are immediately overwritten.  Tombstone TTL
+    # matches normal cache TTL (60s) to prevent stale re-population.
+    try:
+        await redis.set(cache_key, "__revoked__", ex=60)
+    except Exception:
+        logger.warning("revoke_cache_tombstone_failed", key_id=str(key_id))
+
     return key

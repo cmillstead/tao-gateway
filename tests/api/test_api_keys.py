@@ -114,6 +114,35 @@ async def test_revoke_nonexistent_key_returns_404(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_revoke_other_orgs_key_returns_404(client: AsyncClient) -> None:
+    """Org A cannot revoke org B's key (cross-tenant isolation)."""
+    token_a = await _signup_and_get_jwt(client, "org_a@example.com")
+    token_b = await _signup_and_get_jwt(client, "org_b@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    # Org B creates a key
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers_b,
+    )
+    key_id_b = create_resp.json()["id"]
+
+    # Org A tries to revoke org B's key
+    revoke_resp = await client.delete(
+        f"/dashboard/api-keys/{key_id_b}",
+        headers=headers_a,
+    )
+    assert revoke_resp.status_code == 404
+
+    # Verify key is still active for org B
+    list_resp = await client.get("/dashboard/api-keys", headers=headers_b)
+    keys = list_resp.json()
+    assert any(k["id"] == key_id_b and k["is_active"] for k in keys)
+
+
+@pytest.mark.asyncio
 async def test_list_api_keys_pagination_bounds(client: AsyncClient) -> None:
     """Pagination params are validated: limit must be 1-100, offset >= 0."""
     token = await _signup_and_get_jwt(client, "pagination@example.com")
