@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaoGateway — Design Direction Mockups</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #4F46E5;
+    --primary-hover: #4338CA;
+    --primary-light: #EEF2FF;
+    --bg: #FFFFFF;
+    --surface: #FAFAFA;
+    --elevated: #F4F4F5;
+    --border: #E4E4E7;
+    --text-primary: #18181B;
+    --text-secondary: #71717A;
+    --text-muted: #A1A1AA;
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --code-bg: #1E293B;
+    --code-text: #E2E8F0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: var(--text-primary); background: #F0F0F3; }
+  code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+  /* Navigation */
+  .nav { position: fixed; top: 0; left: 0; right: 0; background: var(--text-primary); color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; z-index: 100; }
+  .nav h1 { font-size: 16px; font-weight: 600; }
+  .nav-tabs { display: flex; gap: 4px; }
+  .nav-tab { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; color: #A1A1AA; transition: all 0.15s; border: none; background: none; }
+  .nav-tab:hover { color: white; background: rgba(255,255,255,0.1); }
+  .nav-tab.active { color: white; background: var(--primary); }
+
+  /* Mockup Container */
+  .mockup-container { margin-top: 56px; padding: 32px; display: none; }
+  .mockup-container.active { display: block; }
+  .mockup-label { text-align: center; margin-bottom: 24px; }
+  .mockup-label h2 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+  .mockup-label p { color: var(--text-secondary); font-size: 14px; max-width: 600px; margin: 0 auto; }
+
+  /* Shared Mockup Frame */
+  .mockup-frame { background: var(--bg); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); max-width: 1280px; margin: 0 auto; border: 1px solid var(--border); }
+  .mockup-body { display: flex; min-height: 640px; }
+
+  /* Sidebar Styles */
+  .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); padding: 20px 0; flex-shrink: 0; display: flex; flex-direction: column; }
+  .sidebar-logo { padding: 0 20px 20px; font-size: 15px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+  .sidebar-logo .logo-mark { width: 24px; height: 24px; background: var(--primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 700; }
+  .sidebar-section { padding: 8px 12px; }
+  .sidebar-section-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 8px; margin-bottom: 4px; }
+  .sidebar-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all 0.1s; }
+  .sidebar-item:hover { background: var(--elevated); color: var(--text-primary); }
+  .sidebar-item.active { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+  .sidebar-item .icon { width: 16px; height: 16px; opacity: 0.6; }
+  .sidebar-spacer { flex: 1; }
+  .sidebar-user { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .sidebar-user .avatar { width: 28px; height: 28px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; }
+
+  /* Main Content */
+  .main { flex: 1; padding: 32px; overflow-y: auto; background: var(--bg); }
+  .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .page-title { font-size: 24px; font-weight: 600; }
+  .page-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+
+  /* Buttons */
+  .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.1s; font-family: inherit; }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-outline { background: var(--bg); color: var(--text-primary); border: 1px solid var(--border); }
+  .btn-outline:hover { background: var(--surface); }
+  .btn-ghost { background: none; color: var(--text-secondary); }
+  .btn-ghost:hover { color: var(--text-primary); background: var(--elevated); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-danger { background: none; color: var(--error); border: 1px solid var(--error); }
+  .btn-danger:hover { background: #FEF2F2; }
+
+  /* Cards */
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 24px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-title { font-size: 14px; font-weight: 600; }
+  .card-description { font-size: 13px; color: var(--text-secondary); }
+
+  /* Table */
+  .table { width: 100%; border-collapse: collapse; }
+  .table th { text-align: left; padding: 10px 16px; font-size: 12px; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid var(--border); background: var(--surface); }
+  .table td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  .table tr:hover td { background: var(--surface); }
+
+  /* Badges */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
+  .badge-success { background: #F0FDF4; color: #15803D; }
+  .badge-warning { background: #FFFBEB; color: #A16207; }
+  .badge-error { background: #FEF2F2; color: #DC2626; }
+  .badge-neutral { background: var(--elevated); color: var(--text-secondary); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot-success { background: var(--success); }
+  .dot-warning { background: var(--warning); }
+  .dot-error { background: var(--error); }
+
+  /* Stats Cards */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .stat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+  .stat-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 8px; }
+  .stat-value { font-size: 28px; font-weight: 700; }
+  .stat-change { font-size: 11px; margin-top: 4px; display: flex; align-items: center; gap: 2px; }
+  .stat-change.up { color: var(--success); }
+  .stat-change.down { color: var(--error); }
+
+  /* Code Block */
+  .code-block { background: var(--code-bg); border-radius: 8px; overflow: hidden; }
+  .code-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: rgba(0,0,0,0.2); }
+  .code-tabs { display: flex; gap: 2px; }
+  .code-tab { padding: 4px 12px; border-radius: 4px; font-size: 12px; color: #94A3B8; cursor: pointer; border: none; background: none; font-family: inherit; }
+  .code-tab.active { color: white; background: rgba(255,255,255,0.1); }
+  .code-copy { padding: 4px 10px; border-radius: 4px; font-size: 11px; color: #94A3B8; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); background: none; font-family: inherit; }
+  .code-copy:hover { color: white; border-color: rgba(255,255,255,0.2); }
+  .code-body { padding: 16px; font-size: 13px; color: var(--code-text); line-height: 1.6; overflow-x: auto; }
+  .code-body .comment { color: #64748B; }
+  .code-body .string { color: #86EFAC; }
+  .code-body .key { color: #93C5FD; }
+
+  /* Quota Bar */
+  .quota-bar-container { margin-bottom: 12px; }
+  .quota-bar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .quota-bar-label { font-size: 13px; font-weight: 500; }
+  .quota-bar-value { font-size: 12px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+  .quota-bar { height: 6px; background: var(--elevated); border-radius: 3px; overflow: hidden; }
+  .quota-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+  /* Chart placeholder */
+  .chart-placeholder { height: 200px; background: var(--surface); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; position: relative; overflow: hidden; }
+  .chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 160px; padding: 0 20px; position: absolute; bottom: 20px; left: 20px; right: 20px; }
+  .chart-bar { flex: 1; border-radius: 3px 3px 0 0; transition: height 0.3s; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+  /* Empty State */
+  .empty-state { text-align: center; padding: 48px 24px; }
+  .empty-state h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .empty-state p { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+
+  /* Modal Overlay */
+  .modal-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 10; }
+  .modal { background: var(--bg); border-radius: 12px; padding: 24px; width: 520px; max-width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+  .modal-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+  .modal-description { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+  /* Key display */
+  .key-display { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; }
+  .key-display code { font-size: 14px; color: var(--text-primary); }
+  .key-warning { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; font-size: 12px; color: #A16207; margin-top: 12px; }
+
+  /* Direction-specific styles */
+  .dir-badge { position: absolute; top: 16px; right: 16px; background: var(--primary); color: white; padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 600; z-index: 5; }
+
+  /* Comparison grid */
+  .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1400px; margin: 0 auto; }
+  .comparison-grid .mockup-frame { min-height: auto; }
+  .comparison-grid .mockup-body { min-height: 480px; }
+
+  /* Info banner */
+  .info-banner { background: var(--primary-light); border: 1px solid #C7D2FE; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; margin-bottom: 24px; font-size: 13px; color: var(--primary); }
+
+  /* Environment toggle */
+  .env-toggle { display: flex; background: var(--elevated); border-radius: 6px; padding: 2px; }
+  .env-toggle-btn { padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: none; background: none; color: var(--text-muted); font-family: inherit; }
+  .env-toggle-btn.active { background: var(--bg); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .env-toggle-btn.live { color: var(--success); }
+
+  /* Subnet capability cards */
+  .capability-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+  .capability-card { border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+  .capability-card .cap-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; margin-bottom: 12px; }
+  .capability-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .capability-card p { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+  .capability-card .cap-status { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav">
+  <h1>TaoGateway — Design Directions</h1>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showMockup('overview')">1. Overview</button>
+    <button class="nav-tab" onclick="showMockup('onboarding')">2. Onboarding</button>
+    <button class="nav-tab" onclick="showMockup('api-keys')">3. API Keys</button>
+    <button class="nav-tab" onclick="showMockup('quickstart')">4. Quickstart</button>
+    <button class="nav-tab" onclick="showMockup('usage')">5. Usage</button>
+    <button class="nav-tab" onclick="showMockup('health')">6. Health</button>
+    <button class="nav-tab" onclick="showMockup('empty')">7. Empty States</button>
+    <button class="nav-tab" onclick="showMockup('key-modal')">8. Key Creation</button>
+  </div>
+</nav>
+
+<!-- 1. Overview / Dashboard -->
+<div id="mockup-overview" class="mockup-container active">
+  <div class="mockup-label">
+    <h2>Dashboard Overview</h2>
+    <p>First view after onboarding. Stats at a glance, quota status, and quick access to all capabilities. Answers "where do I stand?" instantly.</p>
+  </div>
+  <div class="mockup-frame">
+    <div class="mockup-body">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar-logo">
+          <div class="logo-mark">T</div>
+          TaoGateway
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-item active">
+            <svg class="icon" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+            Overview
+          </div>
+          <div class="sidebar-item">
+            <svg class="icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+            API Keys
+          </div>
+          <div class="sidebar-item">
+            <svg class="icon" viewBox="0 0 16 16" fill="currentColor"><path d="M1 12L4 4l3 5 2-3 6 8H1z"/></svg>
+            Usage
+          </div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">Resources</div>
+          <div class="sidebar-item">
+            <svg class="icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+            Health
+          </div>
+          <div class="sidebar-item">
+            <svg class="icon" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10v12H3z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+            Docs ↗
+          </div>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-section">
+          <div class="sidebar-item">
+            <svg class="icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+            Settings
+          </div>
+        </div>
+        <div class="sidebar-user">
+          <div class="avatar">C</div>
+          <div>
+            <div style="font-weight:500;font-size:13px">Cevin</div>
+            <div style="font-size:11px;color:var(--text-muted)">Free tier</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="main">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Overview</div>
+            <div class="page-subtitle">Your TaoGateway dashboard</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div class="env-toggle">
+              <button class="env-toggle-btn active live">Live</button>
+              <button class="env-toggle-btn">Test</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Requests today</div>
+            <div class="stat-value">1,247</div>
+            <div class="stat-change up">+12% vs yesterday</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Avg latency (p50)</div>
+            <div class="stat-value" style="font-family:'JetBrains Mono',monospace;font-size:24px">184<span style="font-size:14px;color:var(--text-secondary)">ms</span></div>
+            <div class="stat-change up">-8ms vs last week</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Success rate</div>
+            <div class="stat-value" style="color:var(--success)">99.2%</div>
+            <div class="stat-change up">Stable</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Active keys</div>
+            <div class="stat-value">3</div>
+            <div class="stat-change" style="color:var(--text-muted)">of 5 max (free tier)</div>
+          </div>
+        </div>
+
+        <!-- Quota Status -->
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header">
+            <div class="card-title">Free Tier Quota — This Month</div>
+            <span style="font-size:12px;color:var(--text-muted)">Resets Apr 1</span>
+          </div>
+          <div class="quota-bar-container">
+            <div class="quota-bar-header">
+              <span class="quota-bar-label" style="display:flex;align-items:center;gap:6px"><span class="dot dot-success"></span> Text Generation</span>
+              <span class="quota-bar-value">847 / 1,000</span>
+            </div>
+            <div class="quota-bar"><div class="quota-bar-fill" style="width:84.7%;background:var(--warning)"></div></div>
+          </div>
+          <div class="quota-bar-container">
+            <div class="quota-bar-header">
+              <span class="quota-bar-label" style="display:flex;align-items:center;gap:6px"><span class="dot dot-success"></span> Image Generation</span>
+              <span class="quota-bar-value">123 / 500</span>
+            </div>
+            <div class="quota-bar"><div class="quota-bar-fill" style="width:24.6%;background:var(--primary)"></div></div>
+          </div>
+          <div class="quota-bar-container">
+            <div class="quota-bar-header">
+              <span class="quota-bar-label" style="display:flex;align-items:center;gap:6px"><span class="dot dot-success"></span> Code Generation</span>
+              <span class="quota-bar-value">391 / 1,000</span>
+            </div>
+            <div class="quota-bar"><div class="quota-bar-fill" style="width:39.1%;background:var(--primary)"></div></div>
+          </div>
+        </div>
+
+        <!-- Capabilities -->
+        <div class="capability-grid">
+          <div class="capability-card">
+            <div class="cap-icon" style="background:#EEF2FF;color:var(--primary)">Aa</div>
+            <h4>Text Generation</h4>
+            <p>OpenAI-compatible chat completions powered by Bittensor's decentralized LLM network.</p>
+            <div class="cap-status"><span class="dot dot-success"></span> <span style="color:var(--success)">Healthy</span> <span style="color:var(--text-muted);margin-left:4px">· 142ms avg</span></div>
+          </div>
+          <div class="capability-card">
+            <div class="cap-icon" style="background:#FFF7ED;color:#EA580C">🖼</div>
+            <h4>Image Generation</h4>
+            <p>Generate images from text prompts via Bittensor's decentralized image network.</p>
+            <div class="cap-status"><span class="dot dot-success"></span> <span style="color:var(--success)">Healthy</span> <span style="color:var(--text-muted);margin-left:4px">· 2.1s avg</span></div>
+          </div>
+          <div class="capability-card">
+            <div class="cap-icon" style="background:#F0FDF4;color:#16A34A">&lt;/&gt;</div>
+            <h4>Code Generation</h4>
+            <p>Generate, complete, and explain code via Bittensor's specialized code network.</p>
+            <div class="cap-status"><span class="dot dot-warning"></span> <span style="color:var(--warning)">Degraded</span> <span style="color:var(--text-muted);margin-left:4px">· 890ms avg</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2. Onboarding / First-Time Empty Dashboard -->
+<div id="mockup-onboarding" class="mockup-container">
+  <div class="mockup-label">
+    <h2>First-Time Dashboard (Post-Signup)</h2>
+    <p>What a developer sees immediately after creating an account. Single clear call-to-action. No distractions.</p>
+  </div>
+  <div class="mockup-frame">
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-logo"><div class="logo-mark">T</div> TaoGateway</div>
+        <div class="sidebar-section">
+          <div class="sidebar-item active">
+            <svg class="icon" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+            Overview
+          </div>
+          <div class="sidebar-item">API Keys</div>
+          <div class="sidebar-item">Usage</div>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-user">
+          <div class="avatar">P</div>
+          <div><div style="font-weight:500;font-size:13px">Priya</div><div style="font-size:11px;color:var(--text-muted)">Free tier</div></div>
+        </div>
+      </div>
+      <div class="main" style="display:flex;align-items:center;justify-content:center">
+        <div class="empty-state">
+          <div style="width:64px;height:64px;background:var(--primary-light);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px">🔑</div>
+          <h3>Welcome to TaoGateway</h3>
+          <p>Create your first API key to start making requests to<br>Bittensor's decentralized AI network.</p>
+          <button class="btn btn-primary" style="font-size:14px;padding:10px 24px">Create your first API key</button>
+          <div style="margin-top:24px;font-size:12px;color:var(--text-muted)">
+            3 capabilities available: Text Generation · Image Generation · Code Generation
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. API Keys Page -->
+<div id="mockup-api-keys" class="mockup-container">
+  <div class="mockup-label">
+    <h2>API Keys Management</h2>
+    <p>OpenAI-style key table. Create, copy prefix, view last used, revoke. Masked keys with environment indicators.</p>
+  </div>
+  <div class="mockup-frame">
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-logo"><div class="logo-mark">T</div> TaoGateway</div>
+        <div class="sidebar-section">
+          <div class="sidebar-item">Overview</div>
+          <div class="sidebar-item active">API Keys</div>
+          <div class="sidebar-item">Usage</div>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-user"><div class="avatar">K</div><div><div style="font-weight:500;font-size:13px">Kai</div><div style="font-size:11px;color:var(--text-muted)">Free tier</div></div></div>
+      </div>
+      <div class="main">
+        <div class="page-header">
+          <div>
+            <div class="page-title">API Keys</div>
+            <div class="page-subtitle">Manage your API keys for accessing TaoGateway endpoints.</div>
+          </div>
+          <button class="btn btn-primary">+ Create new key</button>
+        </div>
+
+        <div class="card">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Key</th>
+                <th>Created</th>
+                <th>Last used</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-weight:500">Production</td>
+                <td><code class="mono" style="font-size:12px;color:var(--text-secondary)">tao_sk_live_7f3k...x9m2</code></td>
+                <td style="color:var(--text-secondary)">Mar 8, 2026</td>
+                <td style="color:var(--text-secondary)">2 minutes ago</td>
+                <td><span class="badge badge-success"><span class="dot dot-success"></span> Active</span></td>
+                <td style="text-align:right">
+                  <button class="btn btn-ghost btn-sm">Rotate</button>
+                  <button class="btn btn-danger btn-sm" style="margin-left:4px">Revoke</button>
+                </td>
+              </tr>
+              <tr>
+                <td style="font-weight:500">Development</td>
+                <td><code class="mono" style="font-size:12px;color:var(--text-secondary)">tao_sk_test_a2b1...q8w4</code></td>
+                <td style="color:var(--text-secondary)">Mar 10, 2026</td>
+                <td style="color:var(--text-secondary)">1 hour ago</td>
+                <td><span class="badge badge-success"><span class="dot dot-success"></span> Active</span></td>
+                <td style="text-align:right">
+                  <button class="btn btn-ghost btn-sm">Rotate</button>
+                  <button class="btn btn-danger btn-sm" style="margin-left:4px">Revoke</button>
+                </td>
+              </tr>
+              <tr>
+                <td style="font-weight:500;color:var(--text-muted)">Old key</td>
+                <td><code class="mono" style="font-size:12px;color:var(--text-muted)">tao_sk_live_m4n5...j1k8</code></td>
+                <td style="color:var(--text-muted)">Feb 20, 2026</td>
+                <td style="color:var(--text-muted)">Mar 5, 2026</td>
+                <td><span class="badge badge-neutral">Revoked</span></td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:16px;font-size:12px;color:var(--text-muted)">
+          2 of 5 active keys (free tier limit). <a href="#" style="color:var(--primary);text-decoration:none">Upgrade for unlimited keys →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. Quickstart Panel -->
+<div id="mockup-quickstart" class="mockup-container">
+  <div class="mockup-label">
+    <h2>Quickstart Panel (Post Key Creation)</h2>
+    <p>Appears immediately after creating a key. Pre-filled with the developer's actual key. Copy-paste-run. Zero editing.</p>
+  </div>
+  <div class="mockup-frame">
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-logo"><div class="logo-mark">T</div> TaoGateway</div>
+        <div class="sidebar-section">
+          <div class="sidebar-item active">Overview</div>
+          <div class="sidebar-item">API Keys</div>
+          <div class="sidebar-item">Usage</div>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-user"><div class="avatar">P</div><div><div style="font-weight:500;font-size:13px">Priya</div><div style="font-size:11px;color:var(--text-muted)">Free tier</div></div></div>
+      </div>
+      <div class="main">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Get Started</div>
+            <div class="page-subtitle">Make your first API request in seconds.</div>
+          </div>
+        </div>
+
+        <div class="info-banner">
+          <span style="font-size:16px">✓</span>
+          API key created successfully. Try your first request below.
+        </div>
+
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-title" style="margin-bottom:16px">Your first request</div>
+          <div class="code-block">
+            <div class="code-header">
+              <div class="code-tabs">
+                <button class="code-tab active">curl</button>
+                <button class="code-tab">Python</button>
+                <button class="code-tab">TypeScript</button>
+              </div>
+              <button class="code-copy">Copy</button>
+            </div>
+            <div class="code-body">
+<span class="comment"># Text Generation — OpenAI-compatible</span>
+curl -X POST https://api.taogateway.ai/v1/chat/completions \
+  -H <span class="string">"Authorization: Bearer tao_sk_live_7f3k...full_key_here"</span> \
+  -H <span class="string">"Content-Type: application/json"</span> \
+  -d <span class="string">'{
+    <span class="key">"model"</span>: "tao-text",
+    <span class="key">"messages"</span>: [
+      {<span class="key">"role"</span>: "user", <span class="key">"content"</span>: "What is Bittensor?"}
+    ]
+  }'</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px">All available endpoints</div>
+          <table class="table">
+            <thead>
+              <tr><th>Capability</th><th>Endpoint</th><th>Method</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-weight:500">Text Generation</td>
+                <td><code class="mono" style="font-size:12px">/v1/chat/completions</code></td>
+                <td><span class="badge badge-neutral">POST</span></td>
+                <td><span class="badge badge-success"><span class="dot dot-success"></span> Available</span></td>
+              </tr>
+              <tr>
+                <td style="font-weight:500">Image Generation</td>
+                <td><code class="mono" style="font-size:12px">/v1/images/generate</code></td>
+                <td><span class="badge badge-neutral">POST</span></td>
+                <td><span class="badge badge-success"><span class="dot dot-success"></span> Available</span></td>
+              </tr>
+              <tr>
+                <td style="font-weight:500">Code Generation</td>
+                <td><code class="mono" style="font-size:12px">/v1/code/completions</code></td>
+                <td><span class="badge badge-neutral">POST</span></td>
+                <td><span class="badge badge-success"><span class="dot dot-success"></span> Available</span></td>
+              </tr>
+              <tr>
+                <td style="font-weight:500;color:var(--text-secondary)">List Models</td>
+                <td><code class="mono" style="font-size:12px">/v1/models</code></td>
+                <td><span class="badge badge-neutral">GET</span></td>
+                <td><span class="badge badge-success"><span class="dot dot-success"></span> Available</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 5. Usage Page -->
+<div id="mockup-usage" class="mockup-container">
+  <div class="mockup-label">
+    <h2>Usage Monitoring</h2>
+    <p>Request volume, latency metrics, and per-capability breakdown. Date range selector. Answers "how much am I using?" at a glance.</p>
+  </div>
+  <div class="mockup-frame">
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-logo"><div class="logo-mark">T</div> TaoGateway</div>
+        <div class="sidebar-section">
+          <div class="sidebar-item">Overview</div>
+          <div class="sidebar-item">API Keys</div>
+          <div class="sidebar-item active">Usage</div>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-user"><div class="avatar">K</div><div><div style="font-weight:500;font-size:13px">Kai</div><div style="font-size:11px;color:var(--text-muted)">Free tier</div></div></div>
+      </div>
+      <div class="main">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Usage</div>
+            <div class="page-subtitle">Request volume and performance metrics</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline btn-sm">Last 7 days</button>
+            <button class="btn btn-ghost btn-sm">30 days</button>
+            <button class="btn btn-ghost btn-sm">90 days</button>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active">Requests</div>
+          <div class="tab">Latency</div>
+          <div class="tab">By Capability</div>
+        </div>
+
+        <!-- Chart Area -->
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header">
+            <div class="card-title">Daily Requests</div>
+            <div style="display:flex;gap:16px;font-size:12px">
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:var(--primary)"></span> Text</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#EA580C"></span> Image</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#16A34A"></span> Code</span>
+            </div>
+          </div>
+          <div class="chart-placeholder">
+            <div class="chart-bars">
+              <div class="chart-bar" style="height:40%;background:var(--primary);opacity:0.8"></div>
+              <div class="chart-bar" style="height:55%;background:var(--primary);opacity:0.8"></div>
+              <div class="chart-bar" style="height:35%;background:var(--primary);opacity:0.8"></div>
+              <div class="chart-bar" style="height:70%;background:var(--primary);opacity:0.8"></div>
+              <div class="chart-bar" style="height:65%;background:var(--primary);opacity:0.8"></div>
+              <div class="chart-bar" style="height:80%;background:var(--primary);opacity:0.8"></div>
+              <div class="chart-bar" style="height:90%;background:var(--primary);opacity:0.8"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Usage Breakdown -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+          <div class="card">
+            <div class="stat-label">Text Generation</div>
+            <div style="font-size:24px;font-weight:700;margin-bottom:4px">4,821</div>
+            <div style="font-size:12px;color:var(--text-secondary)">requests this period</div>
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text-secondary)">p50 latency</span><span class="mono">142ms</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text-secondary)">p95 latency</span><span class="mono">312ms</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text-secondary)">Success rate</span><span style="color:var(--success)">99.4%</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Image Generation</div>
+            <div style="font-size:24px;font-weight:700;margin-bottom:4px">891</div>
+            <div style="font-size:12px;color:var(--text-secondary)">requests this period</div>
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text-secondary)">p50 latency</span><span class="mono">2.1s</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text-secondary)">p95 latency</span><span class="mono">4.8s</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text-secondary)">Success rate</span><span style="color:var(--success)">98.7%</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Code Generation</div>
+            <div style="font-size:24px;font-weight:700;margin-bottom:4px">2,156</div>
+            <div style="font-size:12px;color:var(--text-secondary)">requests this period</div>
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text-secondary)">p50 latency</span><span class="mono">890ms</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text-secondary)">p95 latency</span><span class="mono">1.9s</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text-secondary)">Success rate</span><span style="color:var(--warning)">96.2%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 6. Health Status -->
+<div id="mockup-health" class="mockup-container">
+  <div class="mockup-label">
+    <h2>Health & Status</h2>
+    <p>Per-capability health with status dots, latency, and availability. Answers "is anything down?" instantly.</p>
+  </div>
+  <div class="mockup-frame">
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-logo"><div class="logo-mark">T</div> TaoGateway</div>
+        <div class="sidebar-section">
+          <div class="sidebar-item">Overview</div>
+          <div class="sidebar-item">API Keys</div>
+          <div class="sidebar-item">Usage</div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">Resources</div>
+          <div class="sidebar-item active">Health</div>
+          <div class="sidebar-item">Docs ↗</div>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-user"><div class="avatar">K</div><div><div style="font-weight:500;font-size:13px">Kai</div></div></div>
+      </div>
+      <div class="main">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Health</div>
+            <div class="page-subtitle">Current status of all TaoGateway capabilities</div>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted)">Last checked: 30 seconds ago</div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;padding:16px 24px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:12px;height:12px;border-radius:50%;background:var(--success)"></div>
+            <div>
+              <div style="font-weight:600;font-size:14px">Text Generation</div>
+              <div style="font-size:12px;color:var(--text-secondary)">OpenAI-compatible chat completions</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:32px;align-items:center">
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Status</div><span class="badge badge-success">Healthy</span></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Latency (p50)</div><div class="mono" style="font-size:13px">142ms</div></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Availability</div><div style="font-size:13px;color:var(--success)">99.8%</div></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Active miners</div><div class="mono" style="font-size:13px">47</div></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;padding:16px 24px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:12px;height:12px;border-radius:50%;background:var(--success)"></div>
+            <div>
+              <div style="font-weight:600;font-size:14px">Image Generation</div>
+              <div style="font-size:12px;color:var(--text-secondary)">Text-to-image generation</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:32px;align-items:center">
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Status</div><span class="badge badge-success">Healthy</span></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Latency (p50)</div><div class="mono" style="font-size:13px">2.1s</div></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Availability</div><div style="font-size:13px;color:var(--success)">98.5%</div></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Active miners</div><div class="mono" style="font-size:13px">23</div></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-left:3px solid var(--warning)">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:12px;height:12px;border-radius:50%;background:var(--warning)"></div>
+            <div>
+              <div style="font-weight:600;font-size:14px">Code Generation</div>
+              <div style="font-size:12px;color:var(--text-secondary)">Code completion and generation</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:32px;align-items:center">
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Status</div><span class="badge badge-warning">Degraded</span></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Latency (p50)</div><div class="mono" style="font-size:13px;color:var(--warning)">890ms</div></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Availability</div><div style="font-size:13px;color:var(--warning)">94.1%</div></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">Active miners</div><div class="mono" style="font-size:13px;color:var(--warning)">8</div></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:24px">
+          <div class="card-title" style="margin-bottom:4px">Gateway Status</div>
+          <div style="display:flex;gap:24px;font-size:13px;margin-top:12px">
+            <div><span style="color:var(--text-secondary)">Gateway:</span> <span style="color:var(--success)">Operational</span></div>
+            <div><span style="color:var(--text-secondary)">Metagraph sync:</span> <span style="color:var(--success)">Fresh</span> <span style="color:var(--text-muted)">(updated 1m ago)</span></div>
+            <div><span style="color:var(--text-secondary)">Database:</span> <span style="color:var(--success)">Operational</span></div>
+            <div><span style="color:var(--text-secondary)">Rate limiter:</span> <span style="color:var(--success)">Operational</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 7. Empty States -->
+<div id="mockup-empty" class="mockup-container">
+  <div class="mockup-label">
+    <h2>Empty States</h2>
+    <p>Functional, not decorative. Clear next action. No clever illustrations or witty copy.</p>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:1280px;margin:0 auto">
+    <!-- Empty Keys -->
+    <div class="mockup-frame">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--text-secondary)">API Keys — Empty State</div>
+      <div style="padding:48px 24px;text-align:center">
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:8px">No API keys yet</h3>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px">Create an API key to start making requests.</p>
+        <button class="btn btn-primary">+ Create API key</button>
+      </div>
+    </div>
+    <!-- Empty Usage -->
+    <div class="mockup-frame">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--text-secondary)">Usage — Empty State</div>
+      <div style="padding:48px 24px;text-align:center">
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:8px">No usage data yet</h3>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px">Make your first API request to see usage data here.</p>
+        <button class="btn btn-outline">View quickstart →</button>
+      </div>
+    </div>
+    <!-- Quota Exhausted -->
+    <div class="mockup-frame">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--text-secondary)">Quota Exhausted State</div>
+      <div style="padding:24px">
+        <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:16px;display:flex;gap:12px;align-items:flex-start">
+          <span style="color:var(--error);font-size:16px">!</span>
+          <div>
+            <div style="font-weight:600;font-size:14px;margin-bottom:4px">Text Generation quota reached</div>
+            <div style="font-size:13px;color:var(--text-secondary)">You've used 1,000 / 1,000 monthly requests. Quota resets April 1.</div>
+            <button class="btn btn-primary btn-sm" style="margin-top:12px">Upgrade to paid tier →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Error State -->
+    <div class="mockup-frame">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--text-secondary)">API Error Response</div>
+      <div style="padding:24px">
+        <div class="code-block">
+          <div class="code-body" style="font-size:12px">
+{
+  <span class="key">"error"</span>: {
+    <span class="key">"type"</span>: <span class="string">"rate_limit_exceeded"</span>,
+    <span class="key">"message"</span>: <span class="string">"Rate limit exceeded for Text Generation. Retry after 12 seconds."</span>,
+    <span class="key">"code"</span>: 429,
+    <span class="key">"subnet"</span>: <span class="string">"text"</span>,
+    <span class="key">"retry_after"</span>: 12
+  }
+}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 8. Key Creation Modal -->
+<div id="mockup-key-modal" class="mockup-container">
+  <div class="mockup-label">
+    <h2>API Key Creation Flow</h2>
+    <p>One click to create. Key shown once with copy button. Warning about non-recoverable key. Transitions to quickstart.</p>
+  </div>
+  <div class="mockup-frame" style="position:relative">
+    <div class="mockup-body" style="filter:blur(1px);opacity:0.5">
+      <div class="sidebar">
+        <div class="sidebar-logo"><div class="logo-mark">T</div> TaoGateway</div>
+        <div class="sidebar-section">
+          <div class="sidebar-item">Overview</div>
+          <div class="sidebar-item active">API Keys</div>
+          <div class="sidebar-item">Usage</div>
+        </div>
+        <div class="sidebar-spacer"></div>
+      </div>
+      <div class="main"></div>
+    </div>
+    <!-- Modal -->
+    <div class="modal-overlay">
+      <div class="modal">
+        <div class="modal-title">Your new API key</div>
+        <div class="modal-description">Copy this key now — you won't be able to see it again.</div>
+        <div class="key-display">
+          <code style="font-size:13px">tao_sk_live_7f3kR9x2mN4pQ8wL1jB5vY6tH0cA3eF</code>
+          <button class="btn btn-outline btn-sm" style="flex-shrink:0">Copy</button>
+        </div>
+        <div class="key-warning">
+          <span>⚠</span>
+          This key provides full access to your account's API quota. Store it securely and never share it publicly.
+        </div>
+        <div style="margin-top:16px">
+          <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Key name (optional)</label>
+          <input type="text" placeholder="e.g., Production, Development" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;outline:none" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline">Done</button>
+          <button class="btn btn-primary">Copy & view quickstart →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showMockup(id) {
+  document.querySelectorAll('.mockup-container').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('mockup-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>
