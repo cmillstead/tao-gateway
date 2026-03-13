@@ -8,7 +8,7 @@ redis_client: Redis | None = None
 async def get_redis() -> Redis:
     global redis_client  # noqa: PLW0603
     if redis_client is None:
-        redis_client = Redis.from_url(settings.redis_url)
+        redis_client = Redis.from_url(settings.redis_url, max_connections=20)
     return redis_client
 
 

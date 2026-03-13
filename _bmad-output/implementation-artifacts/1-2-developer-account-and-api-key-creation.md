@@ -492,6 +492,7 @@ Claude Opus 4.6
 - 2026-03-12: Second adversarial code review — fixed 2 HIGH (revoked key cache invalidation, password max_length DoS) + 4 MEDIUM (rate limit race condition, JWT UUID validation, env type constraint, rate limit test coverage). 42/42 tests pass.
 - 2026-03-12: Third adversarial code review — fixed 1 HIGH (rate limit broken behind proxy, is_active missing server_default) + 3 MEDIUM (email PII logged, LoginRequest min_length, test fixture DB cleanup). 42/42 tests pass.
 - 2026-03-12: Fourth adversarial code review — fixed 2 HIGH (redis.keys O(N) in tests, trusted proxy validation) + 2 MEDIUM (revoke cache race condition, duplicate conftest cleanup). 42/42 tests pass.
+- 2026-03-12: Fifth adversarial code review — fixed 2 HIGH (missing updated_at audit trail on models, hand-written Alembic migration ID) + 3 MEDIUM (rate limit sliding window → fixed window via Lua, argon2 rehash check on login+key verify, get_current_api_key returns ApiKeyInfo with org_id). JWT now includes iat claim. 43/43 tests pass.
 
 ### File List
 - gateway/models/base.py (new) — DeclarativeBase shared by all models
@@ -552,3 +553,18 @@ Claude Opus 4.6
 - gateway/api/auth.py (modified) — rate limit uses Redis pipeline for atomic incr+expire (no TTL-less key on crash)
 - gateway/middleware/auth.py (modified) — get_current_org_id catches ValueError on invalid UUID in JWT sub claim, returns 401
 - tests/api/test_auth.py (modified) — added test_signup_password_too_long_returns_422 and test_rate_limit_blocks_after_threshold
+
+**Fifth Adversarial Code Review Fixes (2026-03-12):**
+- gateway/models/organization.py (modified) — added updated_at column with server_default and onupdate
+- gateway/models/api_key.py (modified) — added updated_at column with server_default and onupdate
+- gateway/api/health.py (modified) — added 5s in-memory response cache to prevent DDoS via external calls
+- gateway/api/auth.py (modified) — replaced pipeline INCR+EXPIRE with Lua script for true fixed-window rate limit
+- gateway/core/redis.py (modified) — added max_connections=20 to Redis connection pool
+- gateway/middleware/auth.py (modified) — added ApiKeyInfo dataclass returning both key_id and org_id; added argon2 rehash check
+- gateway/services/auth_service.py (modified) — added argon2 rehash check on login; added iat claim to JWT
+- migrations/versions/6873921e4697_add_is_active_default_and_updated_at.py (new) — replaces hand-written a1b2c3d4e5f6 migration; adds updated_at to both tables
+- (deleted) migrations/versions/a1b2c3d4e5f6_add_is_active_server_default.py — replaced with properly ID'd migration
+- tests/conftest.py (modified) — session-scoped drop/create_all for auto table setup; dynamic table names for TRUNCATE; health cache clearing
+- tests/middleware/test_auth_middleware.py (modified) — updated for ApiKeyInfo return type with org_id
+- tests/services/test_auth_service.py (modified) — added test_jwt_contains_iat_claim
+- tests/models/test_models.py (modified) — updated column assertions to include updated_at

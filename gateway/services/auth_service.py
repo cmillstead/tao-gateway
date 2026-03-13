@@ -37,13 +37,21 @@ async def login(email: str, password: str, db: AsyncSession) -> str:
         ph.verify(org.password_hash, password)
     except VerifyMismatchError as exc:
         raise AuthenticationError("Invalid credentials") from exc
+
+    # Transparently upgrade hash if argon2 parameters have changed
+    if ph.check_needs_rehash(org.password_hash):
+        org.password_hash = ph.hash(password)
+        await db.commit()
+
     return create_jwt_token(str(org.id))
 
 
 def create_jwt_token(org_id: str) -> str:
+    now = datetime.now(UTC)
     payload = {
         "sub": org_id,
-        "exp": datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes),
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
     }
     token: str = jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
     return token

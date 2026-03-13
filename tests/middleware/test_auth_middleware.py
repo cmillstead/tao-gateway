@@ -13,8 +13,8 @@ from fastapi.security import HTTPAuthorizationCredentials
 from httpx import AsyncClient
 
 from gateway.core.exceptions import AuthenticationError
-from gateway.middleware.auth import get_current_api_key
-from gateway.services.api_key_service import generate_api_key  # noqa: E402
+from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
+from gateway.services.api_key_service import generate_api_key
 
 # ---------------------------------------------------------------------------
 # Unit tests: get_current_api_key with mocked redis + db
@@ -23,18 +23,21 @@ from gateway.services.api_key_service import generate_api_key  # noqa: E402
 
 @pytest.mark.asyncio
 async def test_api_key_cache_hit_skips_db() -> None:
-    """Cache hit: Redis returns cached key_id, DB is never queried."""
+    """Cache hit: Redis returns cached key_id:org_id, DB is never queried."""
     key_id = uuid.uuid4()
+    org_id = uuid.uuid4()
     full_key, prefix, _ = generate_api_key("live")
 
     mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=full_key)
     mock_redis = AsyncMock()
-    mock_redis.get.return_value = str(key_id).encode()
+    mock_redis.get.return_value = f"{key_id}:{org_id}".encode()
     mock_db = AsyncMock()
 
     result = await get_current_api_key(mock_credentials, mock_db, mock_redis)
 
-    assert result == key_id
+    assert isinstance(result, ApiKeyInfo)
+    assert result.key_id == key_id
+    assert result.org_id == org_id
     mock_redis.get.assert_called_once_with(f"api_key:{prefix}")
     mock_db.scalar.assert_not_called()
 
@@ -44,9 +47,11 @@ async def test_api_key_cache_miss_valid_key_caches_result() -> None:
     """Cache miss: DB lookup + argon2 verify succeeds, result cached with 60s TTL."""
     full_key, prefix, key_hash = generate_api_key("live")
     key_id = uuid.uuid4()
+    org_id = uuid.uuid4()
 
     mock_api_key = MagicMock()
     mock_api_key.id = key_id
+    mock_api_key.org_id = org_id
     mock_api_key.key_hash = key_hash
 
     mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=full_key)
@@ -57,18 +62,23 @@ async def test_api_key_cache_miss_valid_key_caches_result() -> None:
 
     result = await get_current_api_key(mock_credentials, mock_db, mock_redis)
 
-    assert result == key_id
-    mock_redis.set.assert_called_once_with(f"api_key:{prefix}", str(key_id), ex=60)
+    assert isinstance(result, ApiKeyInfo)
+    assert result.key_id == key_id
+    assert result.org_id == org_id
+    mock_redis.set.assert_called_once_with(
+        f"api_key:{prefix}", f"{key_id}:{org_id}", ex=60
+    )
 
 
 @pytest.mark.asyncio
 async def test_api_key_cache_miss_wrong_hash_returns_401() -> None:
-    """Cache miss: DB record found but argon2 verify fails → 401."""
+    """Cache miss: DB record found but argon2 verify fails -> 401."""
     full_key, prefix, _ = generate_api_key("live")
     _, _, wrong_hash = generate_api_key("live")  # hash of a different key
 
     mock_api_key = MagicMock()
     mock_api_key.id = uuid.uuid4()
+    mock_api_key.org_id = uuid.uuid4()
     mock_api_key.key_hash = wrong_hash
 
     mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=full_key)
@@ -83,7 +93,7 @@ async def test_api_key_cache_miss_wrong_hash_returns_401() -> None:
 
 @pytest.mark.asyncio
 async def test_api_key_not_in_db_returns_401() -> None:
-    """Cache miss: key prefix not found in DB → 401."""
+    """Cache miss: key prefix not found in DB -> 401."""
     full_key, _, _ = generate_api_key("live")
 
     mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=full_key)
@@ -98,7 +108,7 @@ async def test_api_key_not_in_db_returns_401() -> None:
 
 @pytest.mark.asyncio
 async def test_api_key_missing_credentials_returns_401() -> None:
-    """No Authorization header → 401."""
+    """No Authorization header -> 401."""
     mock_redis = AsyncMock()
     mock_db = AsyncMock()
 
@@ -130,7 +140,7 @@ async def test_missing_auth_header_on_dashboard_returns_401(client: AsyncClient)
 
 @pytest.mark.asyncio
 async def test_api_key_creation_and_listing_flow(client: AsyncClient) -> None:
-    """Full flow: signup → login → create key → verify key format."""
+    """Full flow: signup -> login -> create key -> verify key format."""
     await client.post(
         "/auth/signup",
         json={"email": "flow2@example.com", "password": "securepassword123"},

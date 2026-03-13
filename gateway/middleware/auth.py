@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 
 import structlog
 from argon2.exceptions import VerifyMismatchError
@@ -19,12 +20,20 @@ logger = structlog.get_logger()
 security = HTTPBearer(auto_error=False)
 
 
+@dataclass(frozen=True, slots=True)
+class ApiKeyInfo:
+    """Validated API key context passed to downstream handlers."""
+
+    key_id: uuid.UUID
+    org_id: uuid.UUID
+
+
 async def get_current_api_key(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
-) -> uuid.UUID:
-    """Validate Bearer API key, return key ID. Uses Redis 60s TTL cache."""
+) -> ApiKeyInfo:
+    """Validate Bearer API key, return key info. Uses Redis 60s TTL cache."""
     if credentials is None:
         raise AuthenticationError("Missing authorization header")
 
@@ -35,7 +44,8 @@ async def get_current_api_key(
     # Try Redis cache first
     cached = await redis.get(cache_key)
     if cached is not None:
-        return uuid.UUID(cached.decode())
+        key_id_str, org_id_str = cached.decode().split(":", 1)
+        return ApiKeyInfo(key_id=uuid.UUID(key_id_str), org_id=uuid.UUID(org_id_str))
 
     # Cache miss — look up in DB
     key_record = await db.scalar(
@@ -54,9 +64,15 @@ async def get_current_api_key(
         logger.warning("api_key_hash_mismatch", prefix=prefix[:12] + "****")
         raise AuthenticationError("Invalid API key") from exc
 
-    # Cache the result: prefix → key_id, 60s TTL
-    await redis.set(cache_key, str(key_record.id), ex=60)
-    return key_record.id
+    # Transparently upgrade hash if argon2 parameters have changed
+    if ph.check_needs_rehash(key_record.key_hash):
+        key_record.key_hash = ph.hash(token)
+        await db.commit()
+
+    # Cache the result: prefix → key_id:org_id, 60s TTL
+    cache_value = f"{key_record.id}:{key_record.org_id}"
+    await redis.set(cache_key, cache_value, ex=60)
+    return ApiKeyInfo(key_id=key_record.id, org_id=key_record.org_id)
 
 
 async def get_current_org_id(
