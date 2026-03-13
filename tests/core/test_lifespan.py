@@ -57,6 +57,43 @@ class TestLifespanStartupFailure:
             )
 
 
+class TestLifespanBittensorDisabled:
+    """Test that lifespan succeeds without Bittensor when disabled."""
+
+    @pytest.mark.asyncio
+    async def test_startup_succeeds_without_bittensor(self) -> None:
+        """When enable_bittensor=False, gateway starts without wallet/subtensor."""
+        with (
+            patch("gateway.main.settings") as mock_settings,
+            patch("gateway.main.get_engine") as mock_engine,
+            patch("gateway.main.get_redis") as mock_redis,
+            patch("gateway.main.close_redis", new_callable=AsyncMock),
+        ):
+            mock_settings.enable_bittensor = False
+            mock_settings.app_version = "0.0.0-test"
+
+            mock_conn = AsyncMock()
+            mock_engine_instance = MagicMock()
+            mock_engine_instance.connect.return_value.__aenter__ = AsyncMock(
+                return_value=mock_conn
+            )
+            mock_engine_instance.connect.return_value.__aexit__ = AsyncMock()
+            mock_engine_instance.dispose = AsyncMock()
+            mock_engine.return_value = mock_engine_instance
+
+            mock_redis_instance = AsyncMock()
+            mock_redis.return_value = mock_redis_instance
+
+            from fastapi import FastAPI
+
+            from gateway.main import lifespan
+
+            test_app = FastAPI()
+            async with lifespan(test_app):
+                assert not hasattr(test_app.state, "dendrite")
+                assert not hasattr(test_app.state, "metagraph_manager")
+
+
 class TestLifespanShutdown:
     """Test that shutdown cleans up Bittensor resources."""
 

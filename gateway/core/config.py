@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     sn1_netuid: int = 1
     metagraph_sync_interval_seconds: int = 120
     dendrite_timeout_seconds: int = 30
+    enable_bittensor: bool = True
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
