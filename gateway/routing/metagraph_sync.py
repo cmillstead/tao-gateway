@@ -36,9 +36,15 @@ class SubnetMetagraphState:
 class MetagraphManager:
     """Manages metagraph state for all registered subnets."""
 
-    def __init__(self, subtensor: bt.Subtensor, sync_interval: int = 120) -> None:
+    def __init__(
+        self,
+        subtensor: bt.Subtensor,
+        sync_interval: int = 120,
+        sync_timeout: float = 30.0,
+    ) -> None:
         self._subtensor = subtensor
         self._sync_interval = sync_interval
+        self._sync_timeout = sync_timeout
         self._subnets: dict[int, SubnetMetagraphState] = {}
         self._sync_task: asyncio.Task[None] | None = None
 
@@ -66,8 +72,11 @@ class MetagraphManager:
         for netuid, state in self._subnets.items():
             try:
                 loop = asyncio.get_running_loop()
-                metagraph = await loop.run_in_executor(
-                    None, self._subtensor.metagraph, netuid
+                metagraph = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, self._subtensor.metagraph, netuid
+                    ),
+                    timeout=self._sync_timeout,
                 )
                 state.metagraph = metagraph
                 state.last_sync_time = time.time()

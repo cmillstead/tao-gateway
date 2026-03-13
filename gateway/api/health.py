@@ -41,8 +41,12 @@ def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | N
     if mgr is None:
         return None
 
+    all_states = mgr.get_all_states()
+    if not all_states:
+        return None
+
     result: dict[str, SubnetHealthStatus] = {}
-    for netuid, state in mgr.get_all_states().items():
+    for netuid, state in all_states.items():
         last_sync: str | None = None
         if state.last_sync_time > 0:
             last_sync = datetime.fromtimestamp(

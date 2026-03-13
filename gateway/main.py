@@ -47,13 +47,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         wallet = create_wallet()
         subtensor = create_subtensor()
         dendrite = create_dendrite(wallet)
-    except Exception:
-        logger.error("startup_bittensor_failed")
+    except Exception as exc:
+        logger.error("startup_bittensor_failed", error=str(exc), error_type=type(exc).__name__)
         raise
 
     metagraph_manager = MetagraphManager(
         subtensor=subtensor,
         sync_interval=settings.metagraph_sync_interval_seconds,
+        sync_timeout=settings.dendrite_timeout_seconds,
     )
     metagraph_manager.register_subnet(settings.sn1_netuid)
     await metagraph_manager.start()

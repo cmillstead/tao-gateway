@@ -486,6 +486,7 @@ Modified files:
 - 2026-03-12: Adversarial code review — 9 issues found and fixed (3 HIGH, 4 MEDIUM, 2 LOW): deprecated asyncio API, private attr access in health endpoint, missing startup error logging, wallet name log leak, silent initial sync failure, missing stake filtering, fragile test imports, hardcoded staleness threshold, test count clarification. 87 tests passing.
 - 2026-03-12: Adversarial code review round 2 — 9 issues found and fixed (3 HIGH, 4 MEDIUM, 2 LOW): initial sync failure silently swallowed (H1), no escalation after repeated sync failures (H2), sync miner selection on event loop undocumented (H3), wallet_name missing from log (M1), health returns null vs empty dict ambiguity (M2), conftest patches never stopped (M3), async tests missing markers (M4), shared mutable state undocumented (L1), identical error messages for distinct failures (L2). 87 tests passing.
 - 2026-03-12: Adversarial code review round 3 — 9 issues found and fixed (3 HIGH, 4 MEDIUM, 2 LOW): dendrite not closed on shutdown despite Task 5.3 marked done (H1), no test for log escalation after repeated sync failures (H2), test_start_and_stop doesn't verify background loop (H3), initial sync failure doesn't block startup (M1), get_all_states returns shared mutable references (M2), no test for missing metagraph_manager on app.state (M3), timing-dependent test fragile under CI (M4), conftest module-level shared state leaks between tests (L1), SubnetUnavailableError indistinguishable failure reasons (L2). 90 tests passing.
+- 2026-03-12: Adversarial code review round 4 — 8 issues found and fixed (3 HIGH, 3 MEDIUM, 2 LOW): no timeout on metagraph sync run_in_executor violating NFR5 (H1), startup Bittensor init error log lacks exception details (H2), startup metagraph-empty guard untested (H3), test_escalation doesn't verify log level change (M1), dendrite aclose_session shutdown untested (M2), story File List missing exceptions.py and error_handler.py (M3), select_miner re-iterates all neurons per request with no caching (L1), health returns empty dict vs None ambiguity for no-subnets case (L2). 94 tests passing.
 
 ## Dev Agent Record
 
@@ -518,14 +519,17 @@ New files:
 - gateway/routing/selector.py
 - tests/core/__init__.py
 - tests/core/test_bittensor.py
+- tests/core/test_lifespan.py
 - tests/routing/test_metagraph_sync.py
 - tests/routing/test_selector.py
 
 Modified files:
 - gateway/core/config.py
+- gateway/core/exceptions.py
 - gateway/main.py
 - gateway/schemas/health.py
 - gateway/api/health.py
+- gateway/middleware/error_handler.py
 - .env.example
 - tests/conftest.py
 - tests/api/test_health.py

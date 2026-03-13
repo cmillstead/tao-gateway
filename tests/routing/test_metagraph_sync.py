@@ -2,12 +2,12 @@
 
 import asyncio
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from gateway.routing.metagraph_sync import MetagraphManager, SubnetMetagraphState
+from gateway.routing.metagraph_sync import MetagraphManager, SubnetMetagraphState, logger
 
 
 @pytest.fixture
@@ -162,13 +162,51 @@ class TestMetagraphManager:
         assert sync_count >= 2, f"Expected >=2 syncs, got {sync_count}"
 
     @pytest.mark.asyncio
+    async def test_sync_timeout_treated_as_failure(
+        self, mock_subtensor: MagicMock
+    ) -> None:
+        """A sync that exceeds sync_timeout is treated as a failure, not a hang."""
+
+        def slow_metagraph(netuid: int) -> None:
+            import time as _t
+
+            _t.sleep(1)  # longer than timeout
+
+        mock_subtensor.metagraph = slow_metagraph
+        mgr = MetagraphManager(
+            subtensor=mock_subtensor, sync_interval=120, sync_timeout=0.05
+        )
+        mgr.register_subnet(1)
+        await mgr.sync_all()
+        state = mgr.get_state(1)
+        assert state is not None
+        assert state.metagraph is None  # never got a result
+        assert state.consecutive_failures == 1
+        assert state.last_sync_error is not None
+
+    @pytest.mark.asyncio
     async def test_escalation_after_repeated_failures(
         self, manager: MetagraphManager, mock_subtensor: MagicMock
     ) -> None:
         """Log level escalates from warning to error after threshold consecutive failures."""
         mock_subtensor.metagraph.side_effect = ConnectionError("down")
-        for _ in range(6):  # exceed _ESCALATION_THRESHOLD (5)
-            await manager.sync_all()
+
+        warning_count = 0
+        error_count = 0
+
+        with patch.object(
+            logger, "warning", wraps=logger.warning
+        ) as mock_warn, patch.object(
+            logger, "error", wraps=logger.error
+        ) as mock_err:
+            for _ in range(6):  # exceed _ESCALATION_THRESHOLD (5)
+                await manager.sync_all()
+            warning_count = mock_warn.call_count
+            error_count = mock_err.call_count
+
         state = manager.get_state(1)
         assert state is not None
         assert state.consecutive_failures == 6
+        # First 4 failures log warning, failures 5+ log error
+        assert warning_count == 4, f"Expected 4 warnings, got {warning_count}"
+        assert error_count == 2, f"Expected 2 errors, got {error_count}"
