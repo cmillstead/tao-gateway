@@ -489,6 +489,7 @@ Claude Opus 4.6
 ### Change Log
 - 2026-03-12: Story 1.2 implementation — DB models, auth service, API key service, auth middleware, error handler, API routes, 36 tests
 - 2026-03-12: Adversarial code review — fixed 3 HIGH (timing attack, no rate limiting, tests on prod DB) + 3 MEDIUM (false File List claim, unsafe fixture, no per-test isolation). 40/40 tests pass.
+- 2026-03-12: Second adversarial code review — fixed 2 HIGH (revoked key cache invalidation, password max_length DoS) + 4 MEDIUM (rate limit race condition, JWT UUID validation, env type constraint, rate limit test coverage). 42/42 tests pass.
 
 ### File List
 - gateway/models/base.py (new) — DeclarativeBase shared by all models
@@ -533,3 +534,10 @@ Claude Opus 4.6
 - gateway/api/auth.py (modified) — added per-IP Redis rate limiting (30/min) on auth endpoints to prevent brute force
 - gateway/core/config.py (modified) — added auth_rate_limit_per_minute setting
 - tests/conftest.py (modified) — tests now use tao_gateway_test database (not production), per-test DB truncation + Redis rate limit key cleanup for full isolation
+
+**Second Adversarial Code Review Fixes (2026-03-12):**
+- gateway/schemas/auth.py (modified) — added max_length=128 on SignupRequest and LoginRequest password fields to prevent argon2 DoS
+- gateway/services/api_key_service.py (modified) — revoke_api_key now invalidates Redis cache; env param typed as Literal["live", "test"]
+- gateway/api/auth.py (modified) — rate limit uses Redis pipeline for atomic incr+expire (no TTL-less key on crash)
+- gateway/middleware/auth.py (modified) — get_current_org_id catches ValueError on invalid UUID in JWT sub claim, returns 401
+- tests/api/test_auth.py (modified) — added test_signup_password_too_long_returns_422 and test_rate_limit_blocks_after_threshold

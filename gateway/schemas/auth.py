@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 class SignupRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class SignupResponse(BaseModel):
@@ -14,7 +14,7 @@ class SignupResponse(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(max_length=128)
 
 
 class LoginResponse(BaseModel):

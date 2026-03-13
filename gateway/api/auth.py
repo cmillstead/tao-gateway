@@ -22,9 +22,11 @@ async def _rate_limit_auth(
     """Simple per-IP rate limit on auth endpoints."""
     client_ip = request.client.host if request.client else "unknown"
     key = f"auth_rate:{client_ip}"
-    current = await redis.incr(key)
-    if current == 1:
-        await redis.expire(key, 60)
+    async with redis.pipeline(transaction=True) as pipe:
+        pipe.incr(key)
+        pipe.expire(key, 60)
+        results = await pipe.execute()
+    current = results[0]
     if current > settings.auth_rate_limit_per_minute:
         raise RateLimitExceededError("Too many authentication attempts. Try again later.")
 

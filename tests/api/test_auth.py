@@ -86,3 +86,29 @@ async def test_login_nonexistent_user_returns_401(client: AsyncClient) -> None:
         json={"email": "nobody@example.com", "password": "securepassword123"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_signup_password_too_long_returns_422(client: AsyncClient) -> None:
+    response = await client.post(
+        "/auth/signup",
+        json={"email": "long@example.com", "password": "a" * 129},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_blocks_after_threshold(client: AsyncClient) -> None:
+    """Auth rate limit returns 429 after exceeding auth_rate_limit_per_minute."""
+    # Default rate limit is 30/min. Send 31 requests.
+    for i in range(30):
+        await client.post(
+            "/auth/login",
+            json={"email": f"ratelimit{i}@example.com", "password": "securepassword123"},
+        )
+    response = await client.post(
+        "/auth/login",
+        json={"email": "ratelimit_final@example.com", "password": "securepassword123"},
+    )
+    assert response.status_code == 429
+    assert response.json()["error"]["type"] == "rate_limit_exceeded"
