@@ -46,7 +46,7 @@ development_status:
   1-2-developer-account-and-api-key-creation: done
   1-3-bittensor-integration-and-miner-selection: done
   1-4-sn1-text-generation-endpoint: done
-  1-5-streaming-responses-and-request-cancellation: backlog
+  1-5-streaming-responses-and-request-cancellation: review
   epic-1-retrospective: optional
 
   # Epic 2: Multi-Subnet Expansion

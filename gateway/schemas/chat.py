@@ -42,3 +42,22 @@ class ChatCompletionResponse(BaseModel):
     model: str
     choices: list[Choice]
     usage: CompletionUsage
+
+
+class DeltaMessage(BaseModel):
+    role: str | None = None
+    content: str | None = None
+
+
+class ChunkChoice(BaseModel):
+    index: int
+    delta: DeltaMessage
+    finish_reason: str | None = None
+
+
+class ChatCompletionChunk(BaseModel):
+    id: str
+    object: Literal["chat.completion.chunk"]
+    created: int
+    model: str
+    choices: list[ChunkChoice]

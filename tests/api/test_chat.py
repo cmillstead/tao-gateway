@@ -216,10 +216,20 @@ async def test_chat_completion_503_subnet_unavailable(
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_501_stream_true(
-    client: AsyncClient,
+async def test_chat_completion_stream_success(
+    client: AsyncClient, test_app: FastAPI
 ) -> None:
     api_key = await _get_api_key(client)
+    _setup_miner_selector(test_app)
+
+    # Mock dendrite.forward to return an async generator
+    async def _mock_stream():
+        yield "Hello"
+        yield " world"
+
+    mock_dendrite = AsyncMock()
+    mock_dendrite.forward.return_value = [_mock_stream()]
+    test_app.state.dendrite = mock_dendrite
 
     response = await client.post(
         "/v1/chat/completions",
@@ -231,9 +241,80 @@ async def test_chat_completion_501_stream_true(
         headers={"Authorization": f"Bearer {api_key}"},
     )
 
-    assert response.status_code == 501
-    data = response.json()
-    assert data["error"]["type"] == "not_implemented"
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+    assert "x-taogateway-miner-uid" in response.headers
+    assert response.headers["x-taogateway-subnet"] == "sn1"
+
+    body = response.text
+    assert "data: [DONE]" in body
+    assert "chat.completion.chunk" in body
+    assert "Hello" in body
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_stream_error_mid_stream(
+    client: AsyncClient, test_app: FastAPI
+) -> None:
+    api_key = await _get_api_key(client)
+    _setup_miner_selector(test_app)
+
+    async def _failing_stream():
+        yield "partial"
+        raise TimeoutError("miner timed out")
+
+    mock_dendrite = AsyncMock()
+    mock_dendrite.forward.return_value = [_failing_stream()]
+    test_app.state.dendrite = mock_dendrite
+
+    response = await client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "tao-sn1",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "stream": True,
+        },
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "gateway_timeout" in body
+    assert "data: [DONE]" in body
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_stream_422_malformed(
+    client: AsyncClient,
+) -> None:
+    api_key = await _get_api_key(client)
+
+    response = await client.post(
+        "/v1/chat/completions",
+        json={"model": "tao-sn1", "messages": [], "stream": True},
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_stream_503_unknown_model(
+    client: AsyncClient,
+) -> None:
+    api_key = await _get_api_key(client)
+
+    response = await client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "nonexistent-model",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "stream": True,
+        },
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+
+    assert response.status_code == 503
 
 
 @pytest.mark.asyncio

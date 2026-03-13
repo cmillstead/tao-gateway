@@ -1,5 +1,8 @@
+import json
 import time
+import uuid
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
 
@@ -130,3 +133,146 @@ class BaseAdapter(ABC):
         }
 
         return response_data, headers
+
+    def to_streaming_synapse(
+        self, request_data: dict[str, Any]
+    ) -> bt.StreamingSynapse:
+        """Convert API request to subnet-specific StreamingSynapse.
+        Override in concrete adapters that support streaming."""
+        raise NotImplementedError("Adapter does not support streaming")
+
+    def format_stream_chunk(
+        self, chunk: str, chunk_id: str, model: str, created: int,
+        *, include_role: bool = False,
+    ) -> str:
+        """Format a raw miner chunk as an SSE data line.
+        Override in concrete adapters that support streaming."""
+        raise NotImplementedError("Adapter does not support streaming")
+
+    def format_stream_done(
+        self, chunk_id: str, model: str, created: int
+    ) -> str:
+        """Format the final stop chunk and [DONE] terminator.
+        Override in concrete adapters that support streaming."""
+        raise NotImplementedError("Adapter does not support streaming")
+
+    async def execute_stream(
+        self,
+        request_data: dict[str, Any],
+        dendrite: bt.Dendrite,
+        axon: Any,
+        miner_uid: str,
+        is_disconnected: Any = None,
+    ) -> AsyncGenerator[str, None]:
+        """Streaming request lifecycle. Yields SSE-formatted strings.
+
+        The caller must select the miner (axon/miner_uid) and pass them in
+        so the same miner is used for both response headers and the query.
+        """
+        config = self.get_config()
+        start_time = time.monotonic()
+        chunk_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+        created = int(time.time())
+        model = str(request_data.get("model", "unknown"))
+
+        # 1. Build streaming synapse
+        synapse = self.to_streaming_synapse(request_data)
+
+        # 2. Query miner with streaming=True
+        try:
+            responses = await dendrite.forward(
+                axons=[axon],
+                synapse=synapse,
+                timeout=config.timeout_seconds,
+                streaming=True,
+            )
+        except TimeoutError as exc:
+            logger.warning(
+                "dendrite_stream_timeout",
+                subnet=config.subnet_name,
+                miner_uid=miner_uid,
+                error=str(exc),
+            )
+            yield self._sse_error("gateway_timeout", "Miner timed out", miner_uid)
+            yield "data: [DONE]\n\n"
+            return
+        except Exception as exc:
+            logger.warning(
+                "dendrite_stream_failed",
+                subnet=config.subnet_name,
+                miner_uid=miner_uid,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            yield self._sse_error("bad_gateway", str(exc), miner_uid)
+            yield "data: [DONE]\n\n"
+            return
+
+        if not responses:
+            yield self._sse_error("bad_gateway", "Empty response", miner_uid)
+            yield "data: [DONE]\n\n"
+            return
+
+        stream = responses[0]
+
+        # 3. Yield latency comment and stream chunks
+        first_chunk = True
+        had_error = False
+        try:
+            async for chunk in stream:
+                # Check client disconnect
+                if is_disconnected is not None and await is_disconnected():
+                    logger.info(
+                        "client_disconnected",
+                        subnet=config.subnet_name,
+                        miner_uid=miner_uid,
+                    )
+                    return
+
+                chunk_text = chunk if isinstance(chunk, str) else str(chunk)
+                if not chunk_text:
+                    continue
+
+                include_role = first_chunk
+                if first_chunk:
+                    ttft_ms = round((time.monotonic() - start_time) * 1000)
+                    yield f": ttft_ms={ttft_ms}\n\n"
+                    first_chunk = False
+
+                yield self.format_stream_chunk(
+                    chunk_text, chunk_id, model, created,
+                    include_role=include_role,
+                )
+        except TimeoutError:
+            had_error = True
+            yield self._sse_error(
+                "gateway_timeout", "Miner timed out mid-stream", miner_uid
+            )
+        except Exception as exc:
+            had_error = True
+            yield self._sse_error("bad_gateway", str(exc), miner_uid)
+        finally:
+            logger.info(
+                "stream_cleanup",
+                subnet=config.subnet_name,
+                miner_uid=miner_uid,
+                had_error=had_error,
+            )
+
+        # 4. Send done — stop chunk only on success, [DONE] always
+        if not had_error:
+            yield self.format_stream_done(chunk_id, model, created)
+        else:
+            yield "data: [DONE]\n\n"
+
+    @staticmethod
+    def _sse_error(error_type: str, message: str, miner_uid: str) -> str:
+        """Format an SSE error event."""
+        data = {
+            "error": {
+                "type": error_type,
+                "message": message,
+                "miner_uid": miner_uid,
+            }
+        }
+        return f"data: {json.dumps(data)}\n\n"
