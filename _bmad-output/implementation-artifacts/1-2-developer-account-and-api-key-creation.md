@@ -616,3 +616,6 @@ Claude Opus 4.6
 - tests/middleware/test_auth_middleware.py (modified) — tests verify hash on cache hit, added cache_hit_wrong_token_rejected + revoked_tombstone tests
 - tests/services/test_auth_service.py (modified) — added test_jwt_verify_wrong_secret_rejected
 - tests/models/test_models.py (modified) — fixed test_organization_has_id_default assertion
+
+## Change Log (Round 10)
+- 2026-03-13: Code review round 10 — fixed 1 HIGH (docker-compose JWT default passes production validation → expanded insecure marker detection) + 2 MEDIUM (missing MAX_KEYS_PER_ORG test, rate limit Lua script sent as full text per request → registered script). 103 tests pass.
