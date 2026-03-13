@@ -67,4 +67,7 @@ async def get_current_org_id(
         raise AuthenticationError("Missing authorization header")
 
     org_id_str = verify_jwt_token(credentials.credentials)
-    return uuid.UUID(org_id_str)
+    try:
+        return uuid.UUID(org_id_str)
+    except ValueError as exc:
+        raise AuthenticationError("Invalid token") from exc
