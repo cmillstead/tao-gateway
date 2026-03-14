@@ -4,6 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from gateway.core.exceptions import GatewayError
+from gateway.core.logging import redact_string_value
 
 logger = structlog.get_logger()
 
@@ -92,7 +93,7 @@ async def internal_exception_handler(request: Request, exc: Exception) -> JSONRe
     logger.error(
         "unhandled_exception",
         error_type=type(exc).__name__,
-        error=str(exc),
+        error=redact_string_value(str(exc)),
         path=request.url.path,
         method=request.method,
     )

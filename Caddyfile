@@ -1,0 +1,26 @@
+{
+	# Global options
+}
+
+your-domain.com {
+	# TLS is automatic via Let's Encrypt
+	# Enforce TLS 1.2+ minimum
+	tls {
+		protocols tls1.2 tls1.3
+	}
+
+	# Security headers (defense-in-depth — also set at application layer)
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "0"
+		Content-Security-Policy "default-src 'self'"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Remove server identification
+		-Server
+	}
+
+	# Reverse proxy to uvicorn
+	reverse_proxy localhost:8000
+}
