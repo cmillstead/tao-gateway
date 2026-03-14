@@ -19,10 +19,8 @@ from gateway.core.redis import close_redis, get_redis
 from gateway.middleware.error_handler import gateway_exception_handler
 from gateway.routing.metagraph_sync import MetagraphManager
 from gateway.routing.selector import MinerSelector
+from gateway.subnets import ADAPTER_DEFINITIONS
 from gateway.subnets.registry import AdapterRegistry
-from gateway.subnets.sn1_text import SN1TextAdapter
-from gateway.subnets.sn19_image import SN19ImageAdapter
-from gateway.subnets.sn62_code import SN62CodeAdapter
 
 # Configure structlog before any logger calls — including module-level init
 setup_logging()
@@ -67,49 +65,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             sync_interval=settings.metagraph_sync_interval_seconds,
             sync_timeout=settings.dendrite_timeout_seconds,
         )
-        metagraph_manager.register_subnet(settings.sn1_netuid)
-        metagraph_manager.register_subnet(settings.sn19_netuid)
-        metagraph_manager.register_subnet(settings.sn62_netuid)
+
+        # Register subnets and adapters from ADAPTER_DEFINITIONS
+        adapter_registry = AdapterRegistry()
+        for adapter_cls, model_names, netuid_attr in ADAPTER_DEFINITIONS:
+            netuid = getattr(settings, netuid_attr)
+            metagraph_manager.register_subnet(netuid)
+            adapter_registry.register(adapter_cls(), model_names=model_names)
+
         await metagraph_manager.start()
 
         try:
-            if metagraph_manager.get_metagraph(settings.sn1_netuid) is None:
-                logger.error(
-                    "startup_metagraph_empty",
-                    netuid=settings.sn1_netuid,
-                )
-                raise RuntimeError(
-                    f"Initial metagraph sync failed for SN{settings.sn1_netuid} — "
-                    "cannot route requests without metagraph data"
-                )
-            if metagraph_manager.get_metagraph(settings.sn19_netuid) is None:
-                logger.error(
-                    "startup_metagraph_empty",
-                    netuid=settings.sn19_netuid,
-                )
-                raise RuntimeError(
-                    f"Initial metagraph sync failed for SN{settings.sn19_netuid} — "
-                    "cannot route requests without metagraph data"
-                )
-            if metagraph_manager.get_metagraph(settings.sn62_netuid) is None:
-                logger.error(
-                    "startup_metagraph_empty",
-                    netuid=settings.sn62_netuid,
-                )
-                raise RuntimeError(
-                    f"Initial metagraph sync failed for SN{settings.sn62_netuid} — "
-                    "cannot route requests without metagraph data"
-                )
+            for _adapter_cls, _model_names, netuid_attr in ADAPTER_DEFINITIONS:
+                netuid = getattr(settings, netuid_attr)
+                if metagraph_manager.get_metagraph(netuid) is None:
+                    logger.error("startup_metagraph_empty", netuid=netuid)
+                    raise RuntimeError(
+                        f"Initial metagraph sync failed for SN{netuid} — "
+                        "cannot route requests without metagraph data"
+                    )
         except BaseException:
             await metagraph_manager.stop()
             raise
 
         miner_selector = MinerSelector(metagraph_manager)
-
-        adapter_registry = AdapterRegistry()
-        adapter_registry.register(SN1TextAdapter(), model_names=["tao-sn1"])
-        adapter_registry.register(SN19ImageAdapter(), model_names=["tao-sn19"])
-        adapter_registry.register(SN62CodeAdapter(), model_names=["tao-sn62"])
 
         app.state.dendrite = dendrite
         app.state.metagraph_manager = metagraph_manager

@@ -75,3 +75,14 @@ class SN62CodeAdapter(BaseAdapter):
             subnet_name="sn62",
             timeout_seconds=settings.sn62_timeout_seconds,
         )
+
+    def get_capability(self) -> str:
+        return "Code Generation"
+
+    def get_parameters(self) -> dict[str, str]:
+        return {
+            "prompt": "string (required, max 16000 chars)",
+            "model": "string (required)",
+            "language": "string (required, max 32 chars)",
+            "context": "string (optional, max 32000 chars)",
+        }

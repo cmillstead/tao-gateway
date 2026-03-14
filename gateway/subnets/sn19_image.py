@@ -100,3 +100,14 @@ class SN19ImageAdapter(BaseAdapter):
             subnet_name="sn19",
             timeout_seconds=settings.sn19_timeout_seconds,
         )
+
+    def get_capability(self) -> str:
+        return "Image Generation"
+
+    def get_parameters(self) -> dict[str, str]:
+        return {
+            "prompt": "string (required, max 2000 chars)",
+            "model": "string (required)",
+            "resolution": "string (optional, e.g. '1024x1024')",
+            "style": "string (optional)",
+        }
