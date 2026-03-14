@@ -7,11 +7,13 @@ import {
   createElement,
 } from "react";
 import type { ReactNode } from "react";
-import type { User, AuthState, LoginRequest, SignupRequest } from "@/types";
+import client from "@/api/client";
+import { extractErrorMessage } from "@/api/errors";
+import type { AuthState, User } from "@/types";
 
 interface AuthContextValue extends AuthState {
-  login: (req: LoginRequest) => Promise<void>;
-  signup: (req: SignupRequest) => Promise<void>;
+  login: (req: { email: string; password: string }) => Promise<void>;
+  signup: (req: { email: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -28,11 +30,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await fetch("/auth/me", { credentials: "include" });
-        if (res.ok) {
-          const data = (await res.json()) as { id: string; email: string };
+        const { data, error } = await client.GET("/auth/me");
+        if (!error && data) {
+          const user = data as { id: string; email: string };
           setState({
-            user: { id: data.id, email: data.email },
+            user: { id: user.id, email: user.email },
             isAuthenticated: true,
             isLoading: false,
           });
@@ -46,20 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void checkAuth();
   }, []);
 
-  const login = useCallback(async (req: LoginRequest) => {
-    const res = await fetch("/auth/login/dashboard", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(req),
+  const login = useCallback(async (req: { email: string; password: string }) => {
+    const { error } = await client.POST("/auth/login/dashboard", {
+      body: req,
     });
 
-    if (!res.ok) {
-      const body: { error?: { message?: string }; detail?: string } | null =
-        await res.json().catch(() => null);
-      const message =
-        body?.error?.message ?? body?.detail ?? "Invalid email or password";
-      throw new Error(message);
+    if (error) {
+      throw new Error(extractErrorMessage(error, "Invalid email or password"));
     }
 
     const user: User = { id: "", email: req.email };
@@ -67,20 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signup = useCallback(
-    async (req: SignupRequest) => {
-      const res = await fetch("/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(req),
+    async (req: { email: string; password: string }) => {
+      const { error } = await client.POST("/auth/signup", {
+        body: req,
       });
 
-      if (!res.ok) {
-        const body: { error?: { message?: string }; detail?: string } | null =
-          await res.json().catch(() => null);
-        const message =
-          body?.error?.message ?? body?.detail ?? "Signup failed. Please try again.";
-        throw new Error(message);
+      if (error) {
+        throw new Error(extractErrorMessage(error, "Signup failed. Please try again."));
       }
 
       // Auto-login after signup
@@ -90,10 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await fetch("/auth/logout", {
-      method: "POST",
-      credentials: "include",
-    }).catch(() => {});
+    try {
+      await client.POST("/auth/logout");
+    } catch {
+      // Ignore logout errors
+    }
     setState({ user: null, isAuthenticated: false, isLoading: false });
   }, []);
 
