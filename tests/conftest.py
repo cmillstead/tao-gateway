@@ -98,6 +98,7 @@ async def _flush_test_state() -> None:
     rate_patterns = (
         "auth_rate:*", "api_key:*", "api_key_revoked:*",
         "chat_rate:*", "images_rate:*", "code_rate:*",
+        "rate:*",
     )
     for pattern in rate_patterns:
         keys = [k async for k in redis.scan_iter(pattern, count=1000)]
