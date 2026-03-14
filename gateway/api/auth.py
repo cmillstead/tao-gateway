@@ -1,18 +1,24 @@
 import ipaddress
 import uuid
+from typing import Literal
 
 import structlog
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Cookie, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.status import HTTP_201_CREATED
 
 from gateway.core.config import settings
 from gateway.core.database import get_db
-from gateway.core.exceptions import GatewayError, RateLimitExceededError
+from gateway.core.exceptions import AuthenticationError, GatewayError, RateLimitExceededError
 from gateway.core.rate_limit import check_rate_limit
 from gateway.schemas.auth import LoginRequest, LoginResponse, SignupRequest, SignupResponse
 from gateway.services import auth_service
+
+_COOKIE_HTTPONLY = True
+_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
+_COOKIE_PATH = "/"
 
 logger = structlog.get_logger()
 
@@ -93,3 +99,109 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)) -> Lo
         raise
     logger.info("login_success")
     return LoginResponse(access_token=token)
+
+
+def _set_auth_cookies(
+    response: JSONResponse, access_token: str, refresh_token: str
+) -> None:
+    secure = not settings.debug
+    max_age_access = settings.jwt_expire_minutes * 60
+    max_age_refresh = settings.refresh_token_expire_days * 86400
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=_COOKIE_HTTPONLY,
+        secure=secure,
+        samesite=_COOKIE_SAMESITE,
+        path=_COOKIE_PATH,
+        max_age=max_age_access,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=_COOKIE_HTTPONLY,
+        secure=secure,
+        samesite=_COOKIE_SAMESITE,
+        path="/auth",
+        max_age=max_age_refresh,
+    )
+
+
+def _clear_auth_cookies(response: JSONResponse) -> None:
+    response.delete_cookie(key="access_token", path=_COOKIE_PATH)
+    response.delete_cookie(key="refresh_token", path="/auth")
+
+
+@router.post("/login/dashboard")
+async def login_dashboard(
+    request: LoginRequest, db: AsyncSession = Depends(get_db)
+) -> JSONResponse:
+    """Dashboard login — sets JWT and refresh token as httpOnly cookies."""
+    try:
+        access_token, org_id = await auth_service.login_with_org_id(
+            request.email, request.password, db
+        )
+    except GatewayError:
+        logger.info("dashboard_login_failed")
+        raise
+
+    refresh_token = await auth_service.create_refresh_token(org_id, db)
+    response = JSONResponse(content={"message": "Login successful"})
+    _set_auth_cookies(response, access_token, refresh_token)
+    logger.info("dashboard_login_success")
+    return response
+
+
+@router.post("/refresh")
+async def refresh(
+    refresh_token: str | None = Cookie(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Rotate refresh token and issue new JWT cookie."""
+    if refresh_token is None:
+        raise AuthenticationError("Missing refresh token")
+
+    new_jwt, new_refresh = await auth_service.rotate_refresh_token(refresh_token, db)
+    response = JSONResponse(content={"message": "Token refreshed"})
+    _set_auth_cookies(response, new_jwt, new_refresh)
+    logger.info("token_refreshed")
+    return response
+
+
+@router.get("/me")
+async def me(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Return current user info from cookie/bearer auth. Lightweight auth check."""
+    token: str | None = None
+    # Check Bearer header first, then cookie
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        token = auth_header[7:]
+    else:
+        token = request.cookies.get("access_token")
+
+    if token is None:
+        raise AuthenticationError("Not authenticated")
+
+    org_id_str = auth_service.verify_jwt_token(token)
+    org = await auth_service.get_org_by_id(org_id_str, db)
+    if org is None:
+        raise AuthenticationError("Not authenticated")
+
+    return JSONResponse(content={"id": str(org.id), "email": org.email})
+
+
+@router.post("/logout")
+async def logout(
+    refresh_token: str | None = Cookie(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Revoke refresh token and clear auth cookies."""
+    if refresh_token is not None:
+        await auth_service.revoke_refresh_token(refresh_token, db)
+    response = JSONResponse(content={"message": "Logged out"})
+    _clear_auth_cookies(response)
+    logger.info("logout")
+    return response
