@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchJson } from "@/lib/api";
 import type {
   ApiKeyCreateRequest,
   ApiKeyCreateResponse,
@@ -7,15 +8,6 @@ import type {
 } from "@/types";
 
 const API_KEYS_QUERY_KEY = ["api-keys"];
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, credentials: "include" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: { message: "Request failed" } }));
-    throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<T>;
-}
 
 export function useApiKeys(params?: { limit?: number; offset?: number; includeRevoked?: boolean }) {
   const limit = params?.limit ?? 50;

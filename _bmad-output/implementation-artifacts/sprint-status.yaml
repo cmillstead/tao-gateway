@@ -69,7 +69,7 @@ development_status:
   epic-4: in-progress
   4-1-dashboard-shell-and-authentication: done
   4-2-api-key-management: done
-  4-3-account-overview-and-quickstart: backlog
+  4-3-account-overview-and-quickstart: done
   4-4-api-client-generation-and-dashboard-build-pipeline: backlog
   4-5-password-reset-flow: backlog
   epic-4-retrospective: optional

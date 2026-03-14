@@ -70,3 +70,27 @@ export interface ApiKeyRotateResponse {
   new_key: ApiKeyCreateResponse;
   revoked_key_id: string;
 }
+
+// Dashboard overview types
+
+export interface SubnetRateLimits {
+  minute: number;
+  day: number;
+  month: number;
+}
+
+export interface SubnetOverview {
+  name: string;
+  netuid: number;
+  status: "healthy" | "degraded" | "unavailable";
+  rate_limits: SubnetRateLimits;
+}
+
+export interface OverviewData {
+  email: string;
+  tier: string;
+  created_at: string;
+  api_key_count: number;
+  first_api_key_prefix: string | null;
+  subnets: SubnetOverview[];
+}
