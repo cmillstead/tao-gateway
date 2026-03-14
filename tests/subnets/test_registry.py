@@ -24,6 +24,12 @@ class StubAdapter(BaseAdapter):
     def get_config(self) -> AdapterConfig:
         return AdapterConfig(netuid=self._netuid, subnet_name=self._name, timeout_seconds=10)
 
+    def get_capability(self) -> str:
+        return "Test Capability"
+
+    def get_parameters(self) -> dict[str, str]:
+        return {"param": "string (required)"}
+
 
 class TestAdapterRegistry:
     def test_register_and_get_by_netuid(self):
@@ -101,6 +107,31 @@ class TestAdapterRegistryListAll:
         registry.register(adapter, model_names=["tao-sn1", "gpt-3.5-turbo"])
         result = registry.list_all()
         assert result[0].model_names == ["tao-sn1", "gpt-3.5-turbo"]
+
+
+class TestAdapterInfoAdapter:
+    def test_adapter_info_exposes_adapter_instance(self):
+        registry = AdapterRegistry()
+        adapter = StubAdapter(1, "sn1")
+        registry.register(adapter, model_names=["tao-sn1"])
+        info = registry.list_all()[0]
+        assert info.adapter is adapter
+
+    def test_adapter_capability_accessible_via_info(self):
+        registry = AdapterRegistry()
+        adapter = StubAdapter(1, "sn1")
+        registry.register(adapter, model_names=["tao-sn1"])
+        info = registry.list_all()[0]
+        assert info.adapter is not None
+        assert info.adapter.get_capability() == "Test Capability"
+
+    def test_adapter_parameters_accessible_via_info(self):
+        registry = AdapterRegistry()
+        adapter = StubAdapter(1, "sn1")
+        registry.register(adapter, model_names=["tao-sn1"])
+        info = registry.list_all()[0]
+        assert info.adapter is not None
+        assert info.adapter.get_parameters() == {"param": "string (required)"}
 
 
 class TestAdapterRegistryGetAllNetuids:

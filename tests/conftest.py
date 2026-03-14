@@ -36,6 +36,9 @@ def _stop_bt_patches() -> None:
 
 _atexit.register(_stop_bt_patches)
 
+# Set up mock Bittensor state on app.state so health endpoint can access it
+# (lifespan does not run with ASGITransport test client)
+import time as _time  # noqa: E402
 from collections.abc import AsyncGenerator  # noqa: E402
 
 import pytest  # noqa: E402
@@ -43,6 +46,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from gateway.api.health import clear_health_cache  # noqa: E402
+from gateway.core.config import settings as _settings  # noqa: E402
 from gateway.core.database import get_engine  # noqa: E402
 from gateway.core.redis import get_redis  # noqa: E402
 from gateway.main import app  # noqa: E402
@@ -50,41 +54,27 @@ from gateway.models import Base  # noqa: E402
 from gateway.routing.metagraph_sync import MetagraphManager  # noqa: E402
 from gateway.routing.selector import MinerSelector  # noqa: E402
 from gateway.services.auth_service import create_jwt_token  # noqa: E402
-
-# Set up mock Bittensor state on app.state so health endpoint can access it
-# (lifespan does not run with ASGITransport test client)
-_test_metagraph_manager = MetagraphManager(subtensor=_mock_bt_subtensor, sync_interval=120)
-_test_metagraph_manager.register_subnet(1)
-_test_metagraph_manager.register_subnet(19)
-_test_metagraph_manager.register_subnet(62)
-# Mark the subnet as freshly synced so health endpoint doesn't report stale
-import time as _time  # noqa: E402
-
-_sn1_state = _test_metagraph_manager.get_state(1)
-assert _sn1_state is not None
-_sn1_state.metagraph = _mock_metagraph
-_sn1_state.last_sync_time = _time.time()
-_sn19_state = _test_metagraph_manager.get_state(19)
-assert _sn19_state is not None
-_sn19_state.metagraph = _mock_metagraph
-_sn19_state.last_sync_time = _time.time()
-_sn62_state = _test_metagraph_manager.get_state(62)
-assert _sn62_state is not None
-_sn62_state.metagraph = _mock_metagraph
-_sn62_state.last_sync_time = _time.time()
+from gateway.subnets import ADAPTER_DEFINITIONS  # noqa: E402
 from gateway.subnets.registry import AdapterRegistry  # noqa: E402
-from gateway.subnets.sn1_text import SN1TextAdapter  # noqa: E402
-from gateway.subnets.sn19_image import SN19ImageAdapter  # noqa: E402
-from gateway.subnets.sn62_code import SN62CodeAdapter  # noqa: E402
+
+_test_metagraph_manager = MetagraphManager(subtensor=_mock_bt_subtensor, sync_interval=120)
+# Register subnets and mark freshly synced from ADAPTER_DEFINITIONS
+for _adapter_cls, _model_names, _netuid_attr in ADAPTER_DEFINITIONS:
+    _netuid = getattr(_settings, _netuid_attr)
+    _test_metagraph_manager.register_subnet(_netuid)
+    _state = _test_metagraph_manager.get_state(_netuid)
+    assert _state is not None
+    _state.metagraph = _mock_metagraph
+    _state.last_sync_time = _time.time()
+
+_test_adapter_registry = AdapterRegistry()
+for _adapter_cls, _model_names, _netuid_attr in ADAPTER_DEFINITIONS:
+    _test_adapter_registry.register(_adapter_cls(), model_names=_model_names)
 
 app.state.metagraph_manager = _test_metagraph_manager
 app.state.miner_selector = MinerSelector(_test_metagraph_manager)
 app.state.dendrite = _mock_bt_dendrite
 app.state.start_time = _time.time()
-_test_adapter_registry = AdapterRegistry()
-_test_adapter_registry.register(SN1TextAdapter(), model_names=["tao-sn1"])
-_test_adapter_registry.register(SN19ImageAdapter(), model_names=["tao-sn19"])
-_test_adapter_registry.register(SN62CodeAdapter(), model_names=["tao-sn62"])
 app.state.adapter_registry = _test_adapter_registry
 
 
@@ -117,7 +107,8 @@ async def _flush_test_state() -> None:
 
 def _reset_metagraph_state() -> None:
     """Reset metagraph test state to freshly-synced defaults."""
-    for netuid in (1, 19, 62):
+    for _cls, _names, netuid_attr in ADAPTER_DEFINITIONS:
+        netuid = getattr(_settings, netuid_attr)
         state = _test_metagraph_manager.get_state(netuid)
         if state is not None:
             state.metagraph = _mock_metagraph

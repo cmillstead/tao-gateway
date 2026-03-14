@@ -145,3 +145,15 @@ class SN1TextAdapter(BaseAdapter):
             subnet_name="sn1",
             timeout_seconds=settings.dendrite_timeout_seconds,
         )
+
+    def get_capability(self) -> str:
+        return "Text Generation"
+
+    def get_parameters(self) -> dict[str, str]:
+        return {
+            "model": "string (required)",
+            "messages": "array (required)",
+            "max_tokens": "integer (optional)",
+            "temperature": "number (optional, 0-2)",
+            "stream": "boolean (optional)",
+        }

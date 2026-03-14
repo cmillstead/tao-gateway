@@ -31,6 +31,12 @@ class FakeAdapter(BaseAdapter):
             netuid=1, subnet_name="test-sn", timeout_seconds=10
         )
 
+    def get_capability(self) -> str:
+        return "Test"
+
+    def get_parameters(self) -> dict[str, str]:
+        return {}
+
 
 @pytest.fixture
 def fake_adapter():

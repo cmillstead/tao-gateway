@@ -54,7 +54,7 @@ development_status:
   2-1-sn19-image-generation-endpoint: done
   2-2-sn62-code-generation-endpoint: done
   2-3-subnet-discovery-and-health: done
-  2-4-adapter-registry-and-extensibility: backlog
+  2-4-adapter-registry-and-extensibility: done
   epic-2-retrospective: optional
 
   # Epic 3: Rate Limiting & API Hardening

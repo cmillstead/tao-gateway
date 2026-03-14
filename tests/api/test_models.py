@@ -123,3 +123,38 @@ class TestListModels:
                 assert model["status"] == "unavailable"
         finally:
             test_app.state.metagraph_manager = original
+
+    async def test_capabilities_from_adapter_self_description(
+        self, client: AsyncClient
+    ):
+        """Capabilities come from adapter.get_capability(), not hardcoded maps."""
+        from gateway.subnets.sn1_text import SN1TextAdapter
+        from gateway.subnets.sn19_image import SN19ImageAdapter
+        from gateway.subnets.sn62_code import SN62CodeAdapter
+
+        expected = {
+            1: SN1TextAdapter().get_capability(),
+            19: SN19ImageAdapter().get_capability(),
+            62: SN62CodeAdapter().get_capability(),
+        }
+        resp = await client.get("/v1/models")
+        for model in resp.json()["data"]:
+            assert model["capability"] == expected[model["subnet_id"]]
+
+    async def test_dynamic_adapter_appears_in_models(
+        self, client: AsyncClient, test_app
+    ):
+        """A dynamically registered adapter auto-appears in /v1/models."""
+        from tests.subnets.test_registry import StubAdapter
+
+        registry = test_app.state.adapter_registry
+        stub = StubAdapter(99, "sn99")
+        registry.register(stub, model_names=["tao-sn99"])
+
+        resp = await client.get("/v1/models")
+        ids = {m["id"] for m in resp.json()["data"]}
+        assert "tao-sn99" in ids
+        sn99 = next(m for m in resp.json()["data"] if m["id"] == "tao-sn99")
+        assert sn99["subnet_id"] == 99
+        assert sn99["capability"] == "Test Capability"
+        assert sn99["parameters"] == {"param": "string (required)"}

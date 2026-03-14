@@ -68,6 +68,16 @@ class BaseAdapter(ABC):
         """Return adapter configuration."""
         ...
 
+    @abstractmethod
+    def get_capability(self) -> str:
+        """Return human-readable capability name (e.g., 'Text Generation')."""
+        ...
+
+    @abstractmethod
+    def get_parameters(self) -> dict[str, str]:
+        """Return informational parameter descriptions for /v1/models discovery."""
+        ...
+
     async def execute(
         self,
         request_data: dict[str, Any],

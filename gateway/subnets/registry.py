@@ -14,6 +14,7 @@ class AdapterInfo:
 
     config: AdapterConfig
     model_names: list[str] = field(default_factory=list)
+    adapter: BaseAdapter | None = None
 
 
 class AdapterRegistry:
@@ -53,6 +54,7 @@ class AdapterRegistry:
             AdapterInfo(
                 config=adapter.get_config(),
                 model_names=list(self._model_names.get(netuid, [])),
+                adapter=adapter,
             )
             for netuid, adapter in self._by_netuid.items()
         ]
