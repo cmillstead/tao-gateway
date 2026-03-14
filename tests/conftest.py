@@ -55,6 +55,7 @@ from gateway.services.auth_service import create_jwt_token  # noqa: E402
 # (lifespan does not run with ASGITransport test client)
 _test_metagraph_manager = MetagraphManager(subtensor=_mock_bt_subtensor, sync_interval=120)
 _test_metagraph_manager.register_subnet(1)
+_test_metagraph_manager.register_subnet(19)
 # Mark the subnet as freshly synced so health endpoint doesn't report stale
 import time as _time  # noqa: E402
 
@@ -62,14 +63,20 @@ _sn1_state = _test_metagraph_manager.get_state(1)
 assert _sn1_state is not None
 _sn1_state.metagraph = _mock_metagraph
 _sn1_state.last_sync_time = _time.time()
+_sn19_state = _test_metagraph_manager.get_state(19)
+assert _sn19_state is not None
+_sn19_state.metagraph = _mock_metagraph
+_sn19_state.last_sync_time = _time.time()
 from gateway.subnets.registry import AdapterRegistry  # noqa: E402
 from gateway.subnets.sn1_text import SN1TextAdapter  # noqa: E402
+from gateway.subnets.sn19_image import SN19ImageAdapter  # noqa: E402
 
 app.state.metagraph_manager = _test_metagraph_manager
 app.state.miner_selector = MinerSelector(_test_metagraph_manager)
 app.state.dendrite = _mock_bt_dendrite
 _test_adapter_registry = AdapterRegistry()
 _test_adapter_registry.register(SN1TextAdapter(), model_names=["tao-sn1"])
+_test_adapter_registry.register(SN19ImageAdapter(), model_names=["tao-sn19"])
 app.state.adapter_registry = _test_adapter_registry
 
 
@@ -90,7 +97,11 @@ async def _flush_test_state() -> None:
     table_names = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
     async with engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
-    for pattern in ("auth_rate:*", "api_key:*", "api_key_revoked:*"):
+    rate_patterns = (
+        "auth_rate:*", "api_key:*", "api_key_revoked:*",
+        "chat_rate:*", "images_rate:*",
+    )
+    for pattern in rate_patterns:
         keys = [k async for k in redis.scan_iter(pattern, count=1000)]
         if keys:
             await redis.delete(*keys)
@@ -98,12 +109,13 @@ async def _flush_test_state() -> None:
 
 def _reset_metagraph_state() -> None:
     """Reset metagraph test state to freshly-synced defaults."""
-    state = _test_metagraph_manager.get_state(1)
-    if state is not None:
-        state.metagraph = _mock_metagraph
-        state.last_sync_time = _time.time()
-        state.last_sync_error = None
-        state.consecutive_failures = 0
+    for netuid in (1, 19):
+        state = _test_metagraph_manager.get_state(netuid)
+        if state is not None:
+            state.metagraph = _mock_metagraph
+            state.last_sync_time = _time.time()
+            state.last_sync_error = None
+            state.consecutive_failures = 0
 
 
 def _reset_app_state() -> None:
