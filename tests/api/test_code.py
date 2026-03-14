@@ -352,8 +352,11 @@ async def test_code_completion_429_rate_limit(
     mock_dendrite.forward.return_value = [_make_success_synapse()]
     test_app.state.dendrite = mock_dendrite
 
-    # Exhaust rate limit
-    for _ in range(settings.code_rate_limit_per_minute):
+    # Exhaust rate limit (SN62 free tier: 10 req/min)
+    from gateway.middleware.rate_limit import get_subnet_rate_limits
+
+    sn62_limits = get_subnet_rate_limits(settings.sn62_netuid)
+    for _ in range(sn62_limits["minute"]):
         resp = await client.post(
             "/v1/code/completions",
             json={"model": "tao-sn62", "prompt": "Write code", "language": "python"},

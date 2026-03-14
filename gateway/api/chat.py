@@ -6,10 +6,9 @@ import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from gateway.core.config import settings
-from gateway.core.exceptions import GatewayError, MinerInvalidResponseError, RateLimitExceededError
-from gateway.core.rate_limit import check_rate_limit
+from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
+from gateway.middleware.rate_limit import RateLimitResult, enforce_rate_limit
 from gateway.schemas.chat import ChatCompletionRequest, ChatCompletionResponse
 from gateway.subnets.base import SSE_DONE
 
@@ -24,25 +23,6 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 
-async def _rate_limit_chat(api_key: ApiKeyInfo) -> None:
-    """Per-API-key rate limit on chat endpoint.
-
-    Falls back to an in-memory rate limiter when Redis is unavailable.
-    """
-    key = f"chat_rate:{api_key.key_id}"
-    result = await check_rate_limit(
-        key=key,
-        limit=settings.chat_rate_limit_per_minute,
-        window_seconds=60,
-        fallback_limit=settings.chat_rate_limit_per_minute,
-        log_prefix="chat_rate_limit",
-    )
-    if result == -1:
-        raise RateLimitExceededError("Chat rate limit exceeded. Try again later.")
-    if result is not None and result > settings.chat_rate_limit_per_minute:
-        raise RateLimitExceededError("Chat rate limit exceeded. Try again later.")
-
-
 router = APIRouter()
 
 
@@ -52,15 +32,17 @@ async def create_chat_completion(
     request: Request,
     api_key: ApiKeyInfo = Depends(get_current_api_key),
 ) -> JSONResponse | StreamingResponse:
-    await _rate_limit_chat(api_key)
     adapter = request.app.state.adapter_registry.get_by_model(body.model)
+    config = adapter.get_config()
+    rate_result = await enforce_rate_limit(str(api_key.key_id), config.netuid, config.subnet_name)
+    request.state.rate_limit_result = rate_result
     dendrite = request.app.state.dendrite
     miner_selector = request.app.state.miner_selector
 
     if body.stream:
-        return await _handle_stream(body, request, adapter, dendrite, miner_selector)
+        return await _handle_stream(body, request, adapter, dendrite, miner_selector, rate_result)
 
-    return await _handle_non_stream(body, adapter, dendrite, miner_selector)
+    return await _handle_non_stream(body, adapter, dendrite, miner_selector, rate_result)
 
 
 async def _handle_stream(
@@ -69,6 +51,7 @@ async def _handle_stream(
     adapter: BaseAdapter,
     dendrite: bt.Dendrite,
     miner_selector: MinerSelector,
+    rate_result: RateLimitResult,
 ) -> StreamingResponse:
     """Handle streaming chat completion request."""
     logger.info(
@@ -120,6 +103,7 @@ async def _handle_stream(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             **headers,
+            **rate_result.to_headers(),
         },
     )
 
@@ -129,6 +113,7 @@ async def _handle_non_stream(
     adapter: BaseAdapter,
     dendrite: bt.Dendrite,
     miner_selector: MinerSelector,
+    rate_result: RateLimitResult,
 ) -> JSONResponse:
     """Handle non-streaming chat completion request."""
     logger.info(
@@ -181,4 +166,4 @@ async def _handle_non_stream(
         latency_ms=headers.get("X-TaoGateway-Latency-Ms"),
     )
 
-    return JSONResponse(content=response_data, headers=headers)
+    return JSONResponse(content=response_data, headers={**headers, **rate_result.to_headers()})

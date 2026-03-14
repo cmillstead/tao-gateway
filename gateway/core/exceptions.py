@@ -36,8 +36,15 @@ class SubnetUnavailableError(GatewayError):
 
 
 class RateLimitExceededError(GatewayError):
-    def __init__(self, message: str = "Rate limit exceeded") -> None:
+    def __init__(
+        self,
+        message: str = "Rate limit exceeded",
+        subnet: str | None = None,
+        retry_after: int = 0,
+    ) -> None:
         super().__init__(message, 429, "rate_limit_exceeded")
+        self.subnet = subnet
+        self.retry_after = retry_after
 
 
 class AuthenticationError(GatewayError):
