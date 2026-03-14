@@ -1,10 +1,12 @@
 import json
+import random
 import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import bittensor as bt
 import nh3
@@ -15,6 +17,9 @@ from gateway.core.exceptions import (
     MinerTimeoutError,
 )
 from gateway.routing.selector import MinerSelector
+
+if TYPE_CHECKING:
+    from gateway.routing.scorer import MinerScorer
 
 logger = structlog.get_logger()
 
@@ -78,11 +83,51 @@ class BaseAdapter(ABC):
         """Return informational parameter descriptions for /v1/models discovery."""
         ...
 
+    def _record_score(
+        self,
+        scorer: "MinerScorer | None",
+        axon: bt.AxonInfo,
+        config: AdapterConfig,
+        elapsed_ms: float,
+        *,
+        success: bool,
+        response_valid: bool = False,
+        response_complete: bool | None = None,
+    ) -> None:
+        """Record a scoring observation if scorer is available.
+
+        When success is True, content sampling is applied: response_complete
+        is set to True only if the request is sampled (random draw against
+        scorer.sample_rate), otherwise it is set to None (not sampled, gets
+        full completeness credit).
+        """
+        if scorer is None:
+            return
+        from gateway.routing.scorer import ScoreObservation
+
+        # Apply content sampling for successful responses
+        if success and response_complete is not None:
+            response_complete = True if random.random() < scorer.sample_rate else None
+
+        scorer.record_observation(
+            ScoreObservation(
+                miner_uid=getattr(axon, "uid", 0),
+                hotkey=axon.hotkey,
+                netuid=config.netuid,
+                success=success,
+                latency_ms=elapsed_ms,
+                response_valid=response_valid,
+                response_complete=response_complete,
+                timestamp=datetime.now(UTC),
+            )
+        )
+
     async def execute(
         self,
         request_data: dict[str, Any],
         dendrite: bt.Dendrite,
         miner_selector: MinerSelector,
+        scorer: "MinerScorer | None" = None,
     ) -> tuple[dict[str, Any], dict[str, str]]:
         """Full request lifecycle. Returns (response_body, gateway_headers)."""
         config = self.get_config()
@@ -104,31 +149,37 @@ class BaseAdapter(ABC):
             )
         except TimeoutError as exc:
             elapsed = time.monotonic() - start_time
+            elapsed_ms = round(elapsed * 1000)
+            self._record_score(scorer, axon, config, elapsed_ms, success=False)
             logger.warning(
                 "dendrite_query_timeout",
                 subnet=config.subnet_name,
                 miner_uid=miner_uid,
                 error=str(exc),
-                elapsed_ms=round(elapsed * 1000),
+                elapsed_ms=elapsed_ms,
             )
             raise MinerTimeoutError(
                 miner_uid=miner_uid, subnet=config.subnet_name
             ) from exc
         except Exception as exc:
             elapsed = time.monotonic() - start_time
+            elapsed_ms = round(elapsed * 1000)
+            self._record_score(scorer, axon, config, elapsed_ms, success=False)
             logger.warning(
                 "dendrite_query_failed",
                 subnet=config.subnet_name,
                 miner_uid=miner_uid,
                 error=str(exc),
                 error_type=type(exc).__name__,
-                elapsed_ms=round(elapsed * 1000),
+                elapsed_ms=elapsed_ms,
             )
             raise MinerInvalidResponseError(
                 miner_uid=miner_uid, subnet=config.subnet_name
             ) from exc
 
         if not responses:
+            elapsed_ms = round((time.monotonic() - start_time) * 1000)
+            self._record_score(scorer, axon, config, elapsed_ms, success=False)
             raise MinerInvalidResponseError(
                 miner_uid=miner_uid, subnet=config.subnet_name
             )
@@ -136,10 +187,14 @@ class BaseAdapter(ABC):
 
         # 4. Validate response
         if response_synapse.is_timeout:
+            elapsed_ms = round((time.monotonic() - start_time) * 1000)
+            self._record_score(scorer, axon, config, elapsed_ms, success=False)
             raise MinerTimeoutError(
                 miner_uid=miner_uid, subnet=config.subnet_name
             )
         if not response_synapse.is_success:
+            elapsed_ms = round((time.monotonic() - start_time) * 1000)
+            self._record_score(scorer, axon, config, elapsed_ms, success=False)
             raise MinerInvalidResponseError(
                 miner_uid=miner_uid, subnet=config.subnet_name
             )
@@ -149,6 +204,8 @@ class BaseAdapter(ABC):
             response_data = self.from_response(response_synapse, request_data)
             response_data = self.sanitize_output(response_data)
         except MinerInvalidResponseError as exc:
+            elapsed_ms = round((time.monotonic() - start_time) * 1000)
+            self._record_score(scorer, axon, config, elapsed_ms, success=False)
             if exc.miner_uid == "unknown":
                 raise MinerInvalidResponseError(
                     miner_uid=miner_uid, subnet=config.subnet_name
@@ -157,7 +214,13 @@ class BaseAdapter(ABC):
 
         elapsed_ms = round((time.monotonic() - start_time) * 1000)
 
-        # 6. Gateway headers
+        # 6. Record successful observation
+        self._record_score(
+            scorer, axon, config, elapsed_ms,
+            success=True, response_valid=True, response_complete=True,
+        )
+
+        # 7. Gateway headers
         headers = {
             "X-TaoGateway-Miner-UID": miner_uid,
             "X-TaoGateway-Latency-Ms": str(elapsed_ms),
@@ -194,6 +257,7 @@ class BaseAdapter(ABC):
         dendrite: bt.Dendrite,
         miner_selector: MinerSelector,
         is_disconnected: Any = None,
+        scorer: "MinerScorer | None" = None,
     ) -> tuple[dict[str, str], AsyncGenerator[str, None]]:
         """Streaming request lifecycle.
 
@@ -210,7 +274,7 @@ class BaseAdapter(ABC):
         }
 
         return headers, self._stream_generator(
-            request_data, dendrite, axon, miner_uid, is_disconnected,
+            request_data, dendrite, axon, miner_uid, is_disconnected, scorer,
         )
 
     async def _stream_generator(
@@ -220,6 +284,7 @@ class BaseAdapter(ABC):
         axon: Any,
         miner_uid: str,
         is_disconnected: Any = None,
+        scorer: "MinerScorer | None" = None,
     ) -> AsyncGenerator[str, None]:
         """Internal streaming generator. Yields SSE-formatted strings."""
         config = self.get_config()
@@ -240,6 +305,8 @@ class BaseAdapter(ABC):
                 streaming=True,
             )
         except TimeoutError as exc:
+            elapsed_ms = round((time.monotonic() - start_time) * 1000)
+            self._record_score(scorer, axon, config, elapsed_ms, success=False)
             logger.warning(
                 "dendrite_stream_timeout",
                 subnet=config.subnet_name,
@@ -250,6 +317,8 @@ class BaseAdapter(ABC):
             yield SSE_DONE
             return
         except Exception as exc:
+            elapsed_ms = round((time.monotonic() - start_time) * 1000)
+            self._record_score(scorer, axon, config, elapsed_ms, success=False)
             logger.warning(
                 "dendrite_stream_failed",
                 subnet=config.subnet_name,
@@ -262,6 +331,8 @@ class BaseAdapter(ABC):
             return
 
         if not responses:
+            elapsed_ms = round((time.monotonic() - start_time) * 1000)
+            self._record_score(scorer, axon, config, elapsed_ms, success=False)
             yield self.sse_error("bad_gateway", "Empty response", miner_uid)
             yield SSE_DONE
             return
@@ -271,10 +342,12 @@ class BaseAdapter(ABC):
         # 3. Yield latency comment and stream chunks
         first_chunk = True
         had_error = False
+        client_disconnected = False
         try:
             async for chunk in stream:
                 # Check client disconnect
                 if is_disconnected is not None and await is_disconnected():
+                    client_disconnected = True
                     logger.info(
                         "client_disconnected",
                         subnet=config.subnet_name,
@@ -312,11 +385,21 @@ class BaseAdapter(ABC):
             )
             yield self.sse_error("bad_gateway", "Miner communication error", miner_uid)
         finally:
+            elapsed_ms = round((time.monotonic() - start_time) * 1000)
+            # Don't count client disconnects as full success — response wasn't completed
+            if not client_disconnected:
+                self._record_score(
+                    scorer, axon, config, elapsed_ms,
+                    success=not had_error,
+                    response_valid=not had_error,
+                    response_complete=True if not had_error else None,
+                )
             logger.info(
                 "stream_cleanup",
                 subnet=config.subnet_name,
                 miner_uid=miner_uid,
                 had_error=had_error,
+                client_disconnected=client_disconnected,
             )
 
         # 4. Send done — stop chunk only on success, [DONE] always

@@ -8,6 +8,7 @@ from gateway.core.exceptions import (
     MinerTimeoutError,
     SubnetUnavailableError,
 )
+from gateway.routing.scorer import MinerScorer
 from gateway.subnets.base import AdapterConfig, BaseAdapter
 
 
@@ -224,3 +225,78 @@ class TestBaseAdapterExecute:
         )
 
         assert headers["X-TaoGateway-Latency-Ms"].isdigit()
+
+
+class TestBaseAdapterScoring:
+    """Tests that scoring hook is called on success and failure."""
+
+    @pytest.mark.asyncio
+    async def test_scorer_records_success(
+        self, fake_adapter, mock_dendrite, mock_miner_selector, mock_axon
+    ):
+        mock_dendrite.forward.return_value = [_make_success_synapse("Hello")]
+
+        scorer = MinerScorer(ema_alpha=0.3, sample_rate=1.0)
+        await fake_adapter.execute(
+            request_data={},
+            dendrite=mock_dendrite,
+            miner_selector=mock_miner_selector,
+            scorer=scorer,
+        )
+
+        # Scorer should have recorded one successful observation
+        scores = scorer.get_scores(netuid=1)
+        assert len(scores) > 0
+
+    @pytest.mark.asyncio
+    async def test_scorer_records_failure_on_timeout(
+        self, fake_adapter, mock_dendrite, mock_miner_selector, mock_axon
+    ):
+        mock_dendrite.forward.return_value = [_make_timeout_synapse()]
+
+        scorer = MinerScorer(ema_alpha=1.0)
+        with pytest.raises(MinerTimeoutError):
+            await fake_adapter.execute(
+                request_data={},
+                dendrite=mock_dendrite,
+                miner_selector=mock_miner_selector,
+                scorer=scorer,
+            )
+
+        # Scorer should have recorded failure
+        score = scorer.get_score(netuid=1, hotkey=mock_axon.hotkey)
+        assert score is not None
+        assert score <= 0.5  # Failure should produce a low score (success=0 caps at 0.5)
+
+    @pytest.mark.asyncio
+    async def test_scorer_records_failure_on_dendrite_exception(
+        self, fake_adapter, mock_dendrite, mock_miner_selector, mock_axon
+    ):
+        mock_dendrite.forward.side_effect = ConnectionError("Network error")
+
+        scorer = MinerScorer(ema_alpha=1.0)
+        with pytest.raises(MinerInvalidResponseError):
+            await fake_adapter.execute(
+                request_data={},
+                dendrite=mock_dendrite,
+                miner_selector=mock_miner_selector,
+                scorer=scorer,
+            )
+
+        score = scorer.get_score(netuid=1, hotkey=mock_axon.hotkey)
+        assert score is not None
+
+    @pytest.mark.asyncio
+    async def test_scorer_none_does_not_crash(
+        self, fake_adapter, mock_dendrite, mock_miner_selector
+    ):
+        """Passing scorer=None should work without error."""
+        mock_dendrite.forward.return_value = [_make_success_synapse()]
+
+        response, headers = await fake_adapter.execute(
+            request_data={},
+            dendrite=mock_dendrite,
+            miner_selector=mock_miner_selector,
+            scorer=None,
+        )
+        assert response == {"result": "Hello!"}

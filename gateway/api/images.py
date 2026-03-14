@@ -26,6 +26,7 @@ async def generate_image(
     request.state.rate_limit_result = rate_result
     dendrite = request.app.state.dendrite
     miner_selector = request.app.state.miner_selector
+    scorer = getattr(request.app.state, "scorer", None)
 
     logger.info(
         "image_generation_request",
@@ -38,6 +39,7 @@ async def generate_image(
             request_data=body.model_dump(),
             dendrite=dendrite,
             miner_selector=miner_selector,
+            scorer=scorer,
         )
     except GatewayError as exc:
         logger.warning(

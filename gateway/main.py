@@ -13,7 +13,7 @@ from sqlalchemy import text
 from gateway.api.router import router
 from gateway.core.bittensor import create_dendrite, create_subtensor, create_wallet
 from gateway.core.config import settings
-from gateway.core.database import get_engine
+from gateway.core.database import get_engine, get_session_factory
 from gateway.core.exceptions import GatewayError
 from gateway.core.logging import setup_logging
 from gateway.core.redis import close_redis, get_redis
@@ -24,9 +24,11 @@ from gateway.middleware.error_handler import (
 )
 from gateway.middleware.security_headers import SecurityHeadersMiddleware
 from gateway.routing.metagraph_sync import MetagraphManager
+from gateway.routing.scorer import MinerScorer
 from gateway.routing.selector import MinerSelector
 from gateway.subnets import ADAPTER_DEFINITIONS
 from gateway.subnets.registry import AdapterRegistry
+from gateway.tasks.score_flush import ScoreFlushTask
 
 # Configure structlog before any logger calls — including module-level init
 setup_logging()
@@ -94,25 +96,60 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await metagraph_manager.stop()
             raise
 
-        miner_selector = MinerSelector(metagraph_manager)
+        # Build subnet timeout map for quality scoring normalization
+        subnet_timeouts: dict[int, float] = {}
+        for _adapter_cls, _model_names, netuid_attr in ADAPTER_DEFINITIONS:
+            netuid = getattr(settings, netuid_attr)
+            timeout_attr = netuid_attr.replace("_netuid", "_timeout_seconds")
+            timeout_ms = getattr(settings, timeout_attr, settings.dendrite_timeout_seconds) * 1000
+            subnet_timeouts[netuid] = timeout_ms
+
+        scorer = MinerScorer(
+            ema_alpha=settings.score_ema_alpha,
+            subnet_timeouts=subnet_timeouts,
+            sample_rate=settings.quality_sample_rate,
+        )
+        miner_selector = MinerSelector(
+            metagraph_manager,
+            scorer=scorer,
+            quality_weight=settings.quality_weight,
+        )
+
+        score_flush_task = ScoreFlushTask(
+            scorer=scorer,
+            session_factory=get_session_factory(),
+            flush_interval=settings.score_flush_interval_seconds,
+            retention_days=settings.score_retention_days,
+        )
+        await score_flush_task.start()
 
         app.state.dendrite = dendrite
         app.state.metagraph_manager = metagraph_manager
         app.state.miner_selector = miner_selector
         app.state.adapter_registry = adapter_registry
+        app.state.scorer = scorer
+        app.state.score_flush_task = score_flush_task
 
         logger.info("startup_bittensor_ok")
     else:
         logger.info("startup_bittensor_skipped")
         dendrite = None
         metagraph_manager = None
+        score_flush_task = None
         app.state.dendrite = None
         app.state.miner_selector = None
         app.state.adapter_registry = AdapterRegistry()
+        app.state.scorer = None
+        app.state.score_flush_task = None
 
     yield
 
     # Shutdown — each step guarded so one failure doesn't skip the rest
+    if score_flush_task is not None:
+        try:
+            await score_flush_task.stop()
+        except Exception:
+            logger.warning("shutdown_score_flush_failed", exc_info=True)
     if metagraph_manager is not None:
         try:
             await metagraph_manager.stop()

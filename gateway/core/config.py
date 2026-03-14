@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     sn62_timeout_seconds: int = 30
     enable_bittensor: bool = True
 
+    # Miner quality scoring
+    score_ema_alpha: float = Field(default=0.3, ge=0.0, le=1.0)
+    score_flush_interval_seconds: int = Field(default=60, ge=1)
+    quality_sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
+    quality_weight: float = Field(default=0.3, ge=0.0, le=1.0)
+    score_retention_days: int = Field(default=30, ge=1)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @model_validator(mode="after")

@@ -1,5 +1,6 @@
 """Tests for MinerSelector — selection by incentive, filtering, edge cases."""
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -7,6 +8,7 @@ import pytest
 
 from gateway.core.exceptions import SubnetUnavailableError
 from gateway.routing.metagraph_sync import MetagraphManager, SubnetMetagraphState
+from gateway.routing.scorer import MinerScorer, ScoreObservation
 from gateway.routing.selector import MinerSelector
 
 
@@ -212,3 +214,98 @@ class TestMinerSelector:
 
         axon2 = selector.select_miner(1)
         assert axon2 is new_metagraph.axons[1]
+
+
+class TestMinerSelectorWithQualityScores:
+    """Tests for quality-blended miner selection."""
+
+    def _make_two_miner_metagraph(self) -> tuple[MagicMock, MagicMock]:
+        metagraph = MagicMock()
+        metagraph.n = 2
+        metagraph.incentive = np.array([0.5, 0.5])  # Equal incentive
+        metagraph.stake = np.array([100.0, 100.0])
+        metagraph.axons = [
+            MagicMock(ip="1.2.3.4", port=8091, hotkey="high_quality", uid=0),
+            MagicMock(ip="5.6.7.8", port=8091, hotkey="low_quality", uid=1),
+        ]
+        mgr = _make_manager(metagraph)
+        return metagraph, mgr
+
+    def test_blended_weights_favor_high_quality(self) -> None:
+        """With equal incentive, quality scores should tip selection."""
+        metagraph, mgr = self._make_two_miner_metagraph()
+
+        scorer = MinerScorer(ema_alpha=1.0)
+        # Give UID 0 a high quality score
+        for _ in range(10):
+            scorer.record_observation(ScoreObservation(
+                miner_uid=0, hotkey="high_quality", netuid=1,
+                success=True, latency_ms=50.0,
+                response_valid=True, response_complete=True,
+                timestamp=datetime.now(UTC),
+            ))
+        # Give UID 1 a low quality score
+        for _ in range(10):
+            scorer.record_observation(ScoreObservation(
+                miner_uid=1, hotkey="low_quality", netuid=1,
+                success=False, latency_ms=5000.0,
+                response_valid=False, response_complete=False,
+                timestamp=datetime.now(UTC),
+            ))
+
+        selector = MinerSelector(mgr, scorer=scorer, quality_weight=0.5)
+
+        counts = {"high_quality": 0, "low_quality": 0}
+        for _ in range(1000):
+            axon = selector.select_miner(1)
+            counts[axon.hotkey] += 1
+
+        # High quality miner should be selected much more often
+        assert counts["high_quality"] > counts["low_quality"]
+        assert counts["high_quality"] > 600
+
+    def test_unscored_miners_use_incentive_only(self) -> None:
+        """Miners without quality scores should use incentive-only weight."""
+        metagraph = MagicMock()
+        metagraph.n = 2
+        metagraph.incentive = np.array([0.9, 0.1])  # UID 0 has much higher incentive
+        metagraph.stake = np.array([100.0, 100.0])
+        metagraph.axons = [
+            MagicMock(ip="1.2.3.4", port=8091, hotkey="no_score", uid=0),
+            MagicMock(ip="5.6.7.8", port=8091, hotkey="no_score_2", uid=1),
+        ]
+        mgr = _make_manager(metagraph)
+
+        scorer = MinerScorer(ema_alpha=0.3)  # No scores recorded
+        selector = MinerSelector(mgr, scorer=scorer, quality_weight=0.5)
+
+        counts = {"no_score": 0, "no_score_2": 0}
+        for _ in range(500):
+            axon = selector.select_miner(1)
+            counts[axon.hotkey] += 1
+
+        # UID 0 should dominate — uses incentive-only
+        assert counts["no_score"] > counts["no_score_2"]
+
+    def test_quality_weight_zero_is_incentive_only(self) -> None:
+        metagraph, mgr = self._make_two_miner_metagraph()
+
+        scorer = MinerScorer(ema_alpha=1.0)
+        # Give UID 1 a much better quality score
+        for _ in range(10):
+            scorer.record_observation(ScoreObservation(
+                miner_uid=1, hotkey="low_quality", netuid=1,
+                success=True, latency_ms=10.0,
+                response_valid=True, response_complete=True,
+                timestamp=datetime.now(UTC),
+            ))
+
+        selector = MinerSelector(mgr, scorer=scorer, quality_weight=0.0)
+
+        counts = {"high_quality": 0, "low_quality": 0}
+        for _ in range(1000):
+            axon = selector.select_miner(1)
+            counts[axon.hotkey] += 1
+
+        # With quality_weight=0, should be roughly 50/50 (equal incentive)
+        assert abs(counts["high_quality"] - counts["low_quality"]) < 200

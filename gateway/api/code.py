@@ -26,6 +26,7 @@ async def generate_code(
     request.state.rate_limit_result = rate_result
     dendrite = request.app.state.dendrite
     miner_selector = request.app.state.miner_selector
+    scorer = getattr(request.app.state, "scorer", None)
 
     logger.info(
         "code_completion_request",
@@ -38,6 +39,7 @@ async def generate_code(
             request_data=body.model_dump(),
             dendrite=dendrite,
             miner_selector=miner_selector,
+            scorer=scorer,
         )
     except GatewayError as exc:
         logger.warning(
