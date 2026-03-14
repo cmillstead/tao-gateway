@@ -113,6 +113,28 @@ def test_request_max_tokens_zero_rejected():
         )
 
 
+def test_request_max_tokens_exceeds_upper_bound_rejected():
+    from gateway.schemas.chat import ChatCompletionRequest
+
+    with pytest.raises(ValidationError, match="max_tokens"):
+        ChatCompletionRequest(
+            model="tao-sn1",
+            messages=[{"role": "user", "content": "Hello"}],
+            max_tokens=16385,
+        )
+
+
+def test_request_max_tokens_at_upper_bound_accepted():
+    from gateway.schemas.chat import ChatCompletionRequest
+
+    req = ChatCompletionRequest(
+        model="tao-sn1",
+        messages=[{"role": "user", "content": "Hello"}],
+        max_tokens=16384,
+    )
+    assert req.max_tokens == 16384
+
+
 def test_request_empty_model_rejected():
     from gateway.schemas.chat import ChatCompletionRequest
 

@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request
@@ -139,14 +140,78 @@ _MAX_BODY_SIZE = 1_000_000  # 1 MB
 
 @app.middleware("http")
 async def limit_request_body_size(request: Request, call_next):  # type: ignore[no-untyped-def]
-    """Reject requests with Content-Length exceeding the maximum body size."""
+    """Reject requests whose body exceeds the maximum size.
+
+    Checks Content-Length up front when available, and also wraps the
+    ASGI receive callable to enforce the limit during body consumption
+    (handles chunked transfer-encoding where Content-Length is absent).
+    """
     content_length = request.headers.get("content-length")
-    if content_length is not None and int(content_length) > _MAX_BODY_SIZE:
+    if content_length is not None:
+        try:
+            size = int(content_length)
+        except (ValueError, OverflowError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "type": "request_too_large",
+                        "message": "Invalid Content-Length",
+                    }
+                },
+            )
+        if size < 0:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "type": "invalid_request",
+                        "message": "Invalid Content-Length",
+                    }
+                },
+            )
+        if size > _MAX_BODY_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "error": {
+                        "type": "request_too_large",
+                        "message": f"Request body too large. Max size is {_MAX_BODY_SIZE} bytes.",
+                    }
+                },
+            )
+
+    # Wrap receive to track bytes read and enforce limit on chunked bodies
+    bytes_received = 0
+    original_receive = request._receive
+    body_too_large = False
+
+    async def _limited_receive() -> dict[str, Any]:
+        nonlocal bytes_received, body_too_large
+        message = await original_receive()
+        if message.get("type") == "http.request":
+            body = message.get("body", b"")
+            bytes_received += len(body)
+            if bytes_received > _MAX_BODY_SIZE:
+                body_too_large = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+        return message  # type: ignore[return-value]
+
+    request._receive = _limited_receive
+    response = await call_next(request)
+
+    if body_too_large:
         return JSONResponse(
             status_code=413,
-            content={"error": {"type": "request_too_large", "message": "Request body too large"}},
+            content={
+                "error": {
+                    "type": "request_too_large",
+                    "message": f"Request body too large. Max size is {_MAX_BODY_SIZE} bytes.",
+                }
+            },
         )
-    return await call_next(request)
+
+    return response
 
 
 app.add_exception_handler(GatewayError, gateway_exception_handler)  # type: ignore[arg-type]

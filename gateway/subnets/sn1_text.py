@@ -42,6 +42,12 @@ class TextGenStreamingSynapse(bt.StreamingSynapse):  # type: ignore[misc]
 def _extract_messages(request_data: dict[str, Any]) -> tuple[list[str], list[str]]:
     """Extract parallel role/message arrays from OpenAI chat format."""
     messages = request_data["messages"]
+    for m in messages:
+        if not isinstance(m["content"], str):
+            raise ValueError(
+                "Multimodal content is not supported for text generation. "
+                "Content must be a string."
+            )
     return [m["role"] for m in messages], [m["content"] for m in messages]
 
 

@@ -227,6 +227,26 @@ class TestExecuteStream:
         assert "data: [DONE]" in text
 
     @pytest.mark.asyncio
+    async def test_sse_error_omits_miner_uid(
+        self, adapter, mock_dendrite, mock_miner_selector
+    ):
+        """SEC-018: miner_uid must not leak to clients in SSE error payloads."""
+        mock_dendrite.forward.side_effect = ConnectionError("network error")
+
+        _, chunks = await _collect_stream(
+            adapter, {"model": "test"}, mock_dendrite, mock_miner_selector,
+        )
+
+        text = "".join(chunks)
+        # Error payload should exist but not contain miner_uid
+        assert "bad_gateway" in text
+        for chunk in chunks:
+            if chunk.startswith("data: {"):
+                payload = json.loads(chunk[6:].strip())
+                if "error" in payload:
+                    assert "miner_uid" not in payload["error"]
+
+    @pytest.mark.asyncio
     async def test_client_disconnect(
         self, adapter, mock_dendrite, mock_miner_selector
     ):

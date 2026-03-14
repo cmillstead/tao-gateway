@@ -97,11 +97,10 @@ async def test_revoke_api_key(client: AsyncClient) -> None:
     assert revoke_resp.status_code == 200
     assert revoke_resp.json()["message"] == "API key revoked"
 
-    # Verify key shows as inactive in listing
+    # Verify revoked key is excluded from default listing
     list_resp = await client.get("/dashboard/api-keys", headers=headers)
     keys = list_resp.json()["items"]
-    revoked_key = next(k for k in keys if k["id"] == key_id)
-    assert revoked_key["is_active"] is False
+    assert not any(k["id"] == key_id for k in keys)
 
 
 @pytest.mark.asyncio

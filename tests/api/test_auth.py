@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
@@ -29,6 +31,8 @@ async def test_signup_duplicate_email_returns_generic_response(client: AsyncClie
     assert response.status_code == 201
     data = response.json()
     assert data["message"] == "Account created successfully"
+    # id must be a valid UUID to be indistinguishable from a real signup (SEC-014)
+    uuid.UUID(data["id"])
 
 
 @pytest.mark.asyncio

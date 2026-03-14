@@ -18,6 +18,7 @@ _DUMMY_HASH = ph.hash("dummy-password-for-timing-equalization")
 
 
 async def signup(email: str, password: str, db: AsyncSession) -> Organization:
+    email = email.lower().strip()
     password_hash = ph.hash(password)
     org = Organization(email=email, password_hash=password_hash)
     db.add(org)
@@ -27,6 +28,7 @@ async def signup(email: str, password: str, db: AsyncSession) -> Organization:
 
 
 async def login(email: str, password: str, db: AsyncSession) -> str:
+    email = email.lower().strip()
     org = await db.scalar(select(Organization).where(Organization.email == email))
     if org is None:
         # Run argon2 verify against dummy hash to equalize timing with the

@@ -1,5 +1,5 @@
-import time
-from typing import Any
+import ipaddress
+import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, Request
@@ -10,44 +10,11 @@ from starlette.status import HTTP_201_CREATED
 from gateway.core.config import settings
 from gateway.core.database import get_db
 from gateway.core.exceptions import GatewayError, RateLimitExceededError
-from gateway.core.redis import get_redis, reset_redis
+from gateway.core.rate_limit import check_rate_limit
 from gateway.schemas.auth import LoginRequest, LoginResponse, SignupRequest, SignupResponse
 from gateway.services import auth_service
 
 logger = structlog.get_logger()
-
-# Lua script: INCR the counter and set EXPIRE only when the key is first
-# created (INCR returns 1).  This gives a true fixed-window rate limit
-# instead of resetting the TTL on every request.
-_RATE_LIMIT_LUA = """
-local current = redis.call('INCR', KEYS[1])
-if current == 1 then
-    redis.call('EXPIRE', KEYS[1], ARGV[1])
-end
-return current
-"""
-_rate_limit_script: Any = None
-_rate_limit_script_redis: object | None = None  # track which Redis instance owns the script
-
-# In-memory fallback rate limiter for when Redis is unavailable.
-# Uses a conservative limit (10 req/min per IP) to limit abuse during outages.
-_FALLBACK_LIMIT = 10
-_FALLBACK_WINDOW = 60.0
-_fallback_counts: dict[str, tuple[float, int]] = {}
-
-
-def _check_fallback_rate_limit(client_ip: str) -> bool:
-    """Return True if the request should be allowed, False if rate-limited."""
-    now = time.monotonic()
-    entry = _fallback_counts.get(client_ip)
-    if entry is None or now - entry[0] >= _FALLBACK_WINDOW:
-        _fallback_counts[client_ip] = (now, 1)
-        return True
-    window_start, count = entry
-    if count >= _FALLBACK_LIMIT:
-        return False
-    _fallback_counts[client_ip] = (window_start, count + 1)
-    return True
 
 
 async def _rate_limit_auth(
@@ -62,28 +29,39 @@ async def _rate_limit_auth(
         return
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for and direct_ip in settings.trusted_proxies:
-        client_ip = forwarded_for.split(",")[0].strip()
+        # Walk right-to-left; skip trusted proxies to find the real client IP.
+        # The rightmost non-trusted IP is the one added by the last trusted proxy.
+        parts = [ip.strip() for ip in forwarded_for.split(",")]
+        client_ip = direct_ip  # fallback if all IPs are trusted
+        for ip in reversed(parts):
+            if ip not in settings.trusted_proxies:
+                client_ip = ip
+                break
     else:
         client_ip = direct_ip
-    key = f"auth_rate:{client_ip}"
+    # Normalize IP to prevent rate limit bypass via equivalent representations
+    # (e.g., ::ffff:127.0.0.1 vs 127.0.0.1, or expanded vs compressed IPv6)
     try:
-        redis = await get_redis()
-        global _rate_limit_script, _rate_limit_script_redis  # noqa: PLW0603
-        if _rate_limit_script is None or _rate_limit_script_redis is not redis:
-            _rate_limit_script = redis.register_script(_RATE_LIMIT_LUA)
-            _rate_limit_script_redis = redis
-        raw_result = await _rate_limit_script(keys=[key], args=[60])
-        current = int(raw_result)
-    except Exception:
-        logger.warning("rate_limit_redis_unavailable")
-        await reset_redis()
-        # Fallback to in-memory rate limiter instead of failing open
-        if not _check_fallback_rate_limit(client_ip):
-            raise RateLimitExceededError(
-                "Too many authentication attempts. Try again later."
-            ) from None
-        return
-    if current > settings.auth_rate_limit_per_minute:
+        addr = ipaddress.ip_address(client_ip)
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            client_ip = str(addr.ipv4_mapped)
+        else:
+            client_ip = str(addr)
+    except ValueError:
+        pass  # keep original string if not a valid IP
+    key = f"auth_rate:{client_ip}"
+    result = await check_rate_limit(
+        key=key,
+        limit=settings.auth_rate_limit_per_minute,
+        window_seconds=60,
+        fallback_limit=settings.auth_rate_limit_per_minute,
+        log_prefix="auth_rate_limit",
+    )
+    if result == -1:
+        raise RateLimitExceededError(
+            "Too many authentication attempts. Try again later."
+        )
+    if result is not None and result > settings.auth_rate_limit_per_minute:
         raise RateLimitExceededError("Too many authentication attempts. Try again later.")
 
 
@@ -97,7 +75,11 @@ async def signup(request: SignupRequest, db: AsyncSession = Depends(get_db)) -> 
     except IntegrityError:
         await db.rollback()
         # Return identical response to prevent email enumeration (SEC-014)
-        return SignupResponse(id="", email=request.email, message="Account created successfully")
+        fake_id = str(uuid.uuid4())
+        normalized_email = request.email.lower().strip()
+        return SignupResponse(
+            id=fake_id, email=normalized_email, message="Account created successfully"
+        )
     logger.info("org_created", org_id=str(org.id))
     return SignupResponse(id=str(org.id), email=org.email, message="Account created successfully")
 

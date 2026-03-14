@@ -21,9 +21,10 @@ async def try_rehash(
     try:
         current_hash = getattr(record, hash_attr)
         if ph.check_needs_rehash(current_hash):
-            setattr(record, hash_attr, ph.hash(plaintext))
+            async with db.begin_nested():
+                setattr(record, hash_attr, ph.hash(plaintext))
             await db.commit()
     except Exception:
+        await db.rollback()
         import structlog
         structlog.get_logger().warning("rehash_failed", record_type=type(record).__name__)
-        await db.rollback()

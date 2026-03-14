@@ -1,7 +1,10 @@
+import structlog
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from gateway.core.exceptions import GatewayError
+
+logger = structlog.get_logger()
 
 
 async def gateway_exception_handler(request: Request, exc: GatewayError) -> JSONResponse:
@@ -17,6 +20,14 @@ async def gateway_exception_handler(request: Request, exc: GatewayError) -> JSON
     if subnet is not None:
         body["subnet"] = subnet
     # miner_uid intentionally omitted from client-facing responses (SEC-018)
+    miner_uid = getattr(exc, "miner_uid", None)
+    if miner_uid is not None:
+        logger.warning(
+            "gateway_error",
+            miner_uid=miner_uid,
+            error_type=exc.error_type,
+            subnet=subnet,
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": body},

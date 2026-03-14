@@ -175,3 +175,29 @@ async def test_list_api_keys_count() -> None:
         keys_page, total_page = await list_api_keys(org.id, db, limit=2)
         assert len(keys_page) == 2
         assert total_page == 3
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_excludes_revoked() -> None:
+    """list_api_keys excludes revoked keys by default, includes them with flag."""
+    async for db in get_db():
+        org = await _create_org(db)
+        redis = await get_redis()
+
+        # Create 3 keys, revoke 1
+        keys_created = []
+        for _ in range(3):
+            api_key, _ = await create_api_key(org.id, "live", db)
+            keys_created.append(api_key)
+        await revoke_api_key(keys_created[0].id, org.id, db, redis)
+
+        # Default: only active keys
+        keys, total = await list_api_keys(org.id, db)
+        assert total == 2
+        assert len(keys) == 2
+        assert all(k.is_active for k in keys)
+
+        # With include_revoked: all keys
+        keys_all, total_all = await list_api_keys(org.id, db, include_revoked=True)
+        assert total_all == 3
+        assert len(keys_all) == 3

@@ -72,41 +72,49 @@ class MetagraphManager:
         """
         return {netuid: copy.copy(state) for netuid, state in self._subnets.items()}
 
+    async def _sync_subnet(self, netuid: int, state: SubnetMetagraphState) -> None:
+        """Sync a single subnet's metagraph. Handles its own errors."""
+        try:
+            loop = asyncio.get_running_loop()
+            metagraph = await asyncio.wait_for(
+                loop.run_in_executor(
+                    self._executor, self._subtensor.metagraph, netuid
+                ),
+                timeout=self._sync_timeout,
+            )
+            state.metagraph = metagraph
+            state.last_sync_time = time.time()
+            state.last_sync_error = None
+            state.consecutive_failures = 0
+            state.sync_generation += 1
+            logger.info(
+                "metagraph_synced",
+                netuid=netuid,
+                neurons=int(metagraph.n),
+            )
+        except Exception as exc:
+            state.consecutive_failures += 1
+            state.last_sync_error = str(exc)
+            log = (
+                logger.error
+                if state.consecutive_failures >= _ESCALATION_THRESHOLD
+                else logger.warning
+            )
+            log(
+                "metagraph_sync_failed",
+                netuid=netuid,
+                error=str(exc),
+                consecutive_failures=state.consecutive_failures,
+            )
+
     async def sync_all(self) -> None:
-        """Sync all registered subnet metagraphs."""
-        for netuid, state in self._subnets.items():
-            try:
-                loop = asyncio.get_running_loop()
-                metagraph = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        self._executor, self._subtensor.metagraph, netuid
-                    ),
-                    timeout=self._sync_timeout,
-                )
-                state.metagraph = metagraph
-                state.last_sync_time = time.time()
-                state.last_sync_error = None
-                state.consecutive_failures = 0
-                state.sync_generation += 1
-                logger.info(
-                    "metagraph_synced",
-                    netuid=netuid,
-                    neurons=int(metagraph.n),
-                )
-            except Exception as exc:
-                state.consecutive_failures += 1
-                state.last_sync_error = str(exc)
-                log = (
-                    logger.error
-                    if state.consecutive_failures >= _ESCALATION_THRESHOLD
-                    else logger.warning
-                )
-                log(
-                    "metagraph_sync_failed",
-                    netuid=netuid,
-                    error=str(exc),
-                    consecutive_failures=state.consecutive_failures,
-                )
+        """Sync all registered subnet metagraphs in parallel."""
+        await asyncio.gather(
+            *(
+                self._sync_subnet(netuid, state)
+                for netuid, state in self._subnets.items()
+            )
+        )
 
     async def _sync_loop(self) -> None:
         """Background loop that syncs periodically. Does NOT run initial sync."""
