@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     quality_weight: float = Field(default=0.3, ge=0.0, le=1.0)
     score_retention_days: int = Field(default=30, ge=1)
 
+    # Usage aggregation
+    usage_aggregation_interval_seconds: int = Field(default=86400, ge=1)
+    usage_retention_days: int = Field(default=90, ge=1)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @model_validator(mode="after")

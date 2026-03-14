@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -7,9 +9,11 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from gateway.core.constants import HDR_LATENCY_MS, HDR_MINER_UID, HDR_SUBNET
+from gateway.core.database import get_session_factory
 from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
 from gateway.middleware.rate_limit import RateLimitResult, enforce_rate_limit
+from gateway.middleware.usage import record_usage
 from gateway.schemas.chat import ChatCompletionRequest, ChatCompletionResponse
 from gateway.subnets.base import SSE_DONE
 
@@ -44,11 +48,11 @@ async def create_chat_completion(
 
     if body.stream:
         return await _handle_stream(
-            body, request, adapter, dendrite, miner_selector, rate_result, scorer,
+            body, request, adapter, dendrite, miner_selector, rate_result, scorer, api_key,
         )
 
     return await _handle_non_stream(
-        body, adapter, dendrite, miner_selector, rate_result, scorer,
+        body, adapter, dendrite, miner_selector, rate_result, scorer, api_key,
     )
 
 
@@ -60,6 +64,7 @@ async def _handle_stream(
     miner_selector: MinerSelector,
     rate_result: RateLimitResult,
     scorer: Any = None,
+    api_key: ApiKeyInfo | None = None,
 ) -> StreamingResponse:
     """Handle streaming chat completion request."""
     logger.info(
@@ -67,6 +72,8 @@ async def _handle_stream(
         model=body.model,
         message_count=len(body.messages),
     )
+
+    config = adapter.get_config()
 
     headers, stream = await adapter.execute_stream(
         request_data=body.model_dump(),
@@ -76,6 +83,8 @@ async def _handle_stream(
         scorer=scorer,
     )
     miner_uid = headers[HDR_MINER_UID]
+
+    stream_start = time.monotonic()
 
     async def _generator() -> AsyncGenerator[str, None]:
         had_error = False
@@ -101,6 +110,20 @@ async def _handle_stream(
             )
             yield adapter.sse_error("internal_error", "Internal server error", miner_uid)
             yield SSE_DONE
+        finally:
+            elapsed_ms = round((time.monotonic() - stream_start) * 1000)
+            if api_key is not None:
+                asyncio.create_task(record_usage(
+                    session_factory=get_session_factory(),
+                    api_key_id=api_key.key_id,
+                    org_id=api_key.org_id,
+                    subnet_name=config.subnet_name,
+                    netuid=config.netuid,
+                    endpoint="/v1/chat/completions",
+                    miner_uid=miner_uid,
+                    latency_ms=elapsed_ms,
+                    status_code=200 if not had_error else 502,
+                ))
 
         if not had_error:
             logger.info("chat_completion_stream_complete", model=body.model)
@@ -124,6 +147,7 @@ async def _handle_non_stream(
     miner_selector: MinerSelector,
     rate_result: RateLimitResult,
     scorer: Any = None,
+    api_key: ApiKeyInfo | None = None,
 ) -> JSONResponse:
     """Handle non-streaming chat completion request."""
     logger.info(
@@ -131,6 +155,8 @@ async def _handle_non_stream(
         model=body.model,
         message_count=len(body.messages),
     )
+
+    config = adapter.get_config()
 
     try:
         response_data, headers = await adapter.execute(
@@ -146,6 +172,18 @@ async def _handle_non_stream(
             error_type=exc.error_type,
             status_code=exc.status_code,
         )
+        if api_key is not None:
+            asyncio.create_task(record_usage(
+                session_factory=get_session_factory(),
+                api_key_id=api_key.key_id,
+                org_id=api_key.org_id,
+                subnet_name=config.subnet_name,
+                netuid=config.netuid,
+                endpoint="/v1/chat/completions",
+                miner_uid=None,
+                latency_ms=0,
+                status_code=exc.status_code,
+            ))
         raise
     except Exception as exc:
         logger.error(
@@ -154,6 +192,18 @@ async def _handle_non_stream(
             error_type=type(exc).__name__,
             error=str(exc),
         )
+        if api_key is not None:
+            asyncio.create_task(record_usage(
+                session_factory=get_session_factory(),
+                api_key_id=api_key.key_id,
+                org_id=api_key.org_id,
+                subnet_name=config.subnet_name,
+                netuid=config.netuid,
+                endpoint="/v1/chat/completions",
+                miner_uid=None,
+                latency_ms=0,
+                status_code=500,
+            ))
         raise
 
     # Validate response against OpenAI schema before returning
@@ -169,6 +219,23 @@ async def _handle_non_stream(
             miner_uid=headers.get(HDR_MINER_UID, "unknown"),
             subnet=headers.get(HDR_SUBNET, "unknown"),
         ) from exc
+
+    if api_key is not None:
+        usage = response_data.get("usage", {})
+        asyncio.create_task(record_usage(
+            session_factory=get_session_factory(),
+            api_key_id=api_key.key_id,
+            org_id=api_key.org_id,
+            subnet_name=config.subnet_name,
+            netuid=config.netuid,
+            endpoint="/v1/chat/completions",
+            miner_uid=headers.get(HDR_MINER_UID),
+            latency_ms=int(headers.get(HDR_LATENCY_MS, 0)),
+            status_code=200,
+            prompt_tokens=usage.get("prompt_tokens", 0),
+            completion_tokens=usage.get("completion_tokens", 0),
+            total_tokens=usage.get("total_tokens", 0),
+        ))
 
     logger.info(
         "chat_completion_success",

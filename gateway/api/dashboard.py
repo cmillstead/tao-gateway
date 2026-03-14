@@ -1,8 +1,9 @@
 import uuid
-from typing import TYPE_CHECKING
+from datetime import UTC, date, datetime, timedelta
+from typing import TYPE_CHECKING, Literal
 
 import structlog
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,8 @@ from gateway.schemas.dashboard import (
     SubnetOverview,
     SubnetRateLimits,
 )
+from gateway.schemas.usage import DashboardUsageResponse
+from gateway.services.usage_service import get_quota_status, get_usage_summaries
 
 if TYPE_CHECKING:
     from gateway.routing.metagraph_sync import MetagraphManager
@@ -111,5 +114,44 @@ async def get_overview(
         created_at=org.created_at,
         api_key_count=api_key_count,
         first_api_key_prefix=first_key,
+        subnets=subnets,
+    )
+
+
+@router.get("/usage", response_model=DashboardUsageResponse)
+async def get_dashboard_usage(
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+    subnet: str | None = Query(default=None, description="Filter by subnet name"),
+    start_date: date | None = Query(default=None, description="Start date (ISO 8601)"),
+    end_date: date | None = Query(default=None, description="End date (ISO 8601)"),
+    granularity: Literal["daily", "monthly"] = Query(default="daily"),
+) -> DashboardUsageResponse:
+    """Return per-subnet usage with quota info for the dashboard."""
+    today = datetime.now(UTC).date()
+    effective_start = start_date or (today - timedelta(days=30))
+    effective_end = end_date or today
+
+    subnets = await get_usage_summaries(
+        db=db,
+        org_id=org_id,
+        start_date=effective_start,
+        end_date=effective_end,
+        granularity=granularity,
+        subnet_filter=subnet,
+    )
+
+    # Attach quota info to each subnet
+    quotas = await get_quota_status(db=db, org_id=org_id)
+    quota_map = {q.netuid: q for q in quotas}
+    for subnet_usage in subnets:
+        subnet_usage.quota = quota_map.get(subnet_usage.netuid)
+
+    logger.info("dashboard_usage_loaded", org_id=str(org_id), subnet=subnet)
+
+    return DashboardUsageResponse(
+        start_date=effective_start,
+        end_date=effective_end,
+        granularity=granularity,
         subnets=subnets,
     )
