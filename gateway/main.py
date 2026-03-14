@@ -1,3 +1,4 @@
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -31,6 +32,8 @@ logger = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    app.state.start_time = time.time()
+
     # Startup: verify DB and Redis connectivity before accepting traffic
     engine = get_engine()
     try:
