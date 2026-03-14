@@ -56,6 +56,7 @@ from gateway.services.auth_service import create_jwt_token  # noqa: E402
 _test_metagraph_manager = MetagraphManager(subtensor=_mock_bt_subtensor, sync_interval=120)
 _test_metagraph_manager.register_subnet(1)
 _test_metagraph_manager.register_subnet(19)
+_test_metagraph_manager.register_subnet(62)
 # Mark the subnet as freshly synced so health endpoint doesn't report stale
 import time as _time  # noqa: E402
 
@@ -67,9 +68,14 @@ _sn19_state = _test_metagraph_manager.get_state(19)
 assert _sn19_state is not None
 _sn19_state.metagraph = _mock_metagraph
 _sn19_state.last_sync_time = _time.time()
+_sn62_state = _test_metagraph_manager.get_state(62)
+assert _sn62_state is not None
+_sn62_state.metagraph = _mock_metagraph
+_sn62_state.last_sync_time = _time.time()
 from gateway.subnets.registry import AdapterRegistry  # noqa: E402
 from gateway.subnets.sn1_text import SN1TextAdapter  # noqa: E402
 from gateway.subnets.sn19_image import SN19ImageAdapter  # noqa: E402
+from gateway.subnets.sn62_code import SN62CodeAdapter  # noqa: E402
 
 app.state.metagraph_manager = _test_metagraph_manager
 app.state.miner_selector = MinerSelector(_test_metagraph_manager)
@@ -77,6 +83,7 @@ app.state.dendrite = _mock_bt_dendrite
 _test_adapter_registry = AdapterRegistry()
 _test_adapter_registry.register(SN1TextAdapter(), model_names=["tao-sn1"])
 _test_adapter_registry.register(SN19ImageAdapter(), model_names=["tao-sn19"])
+_test_adapter_registry.register(SN62CodeAdapter(), model_names=["tao-sn62"])
 app.state.adapter_registry = _test_adapter_registry
 
 
@@ -99,7 +106,7 @@ async def _flush_test_state() -> None:
         await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
     rate_patterns = (
         "auth_rate:*", "api_key:*", "api_key_revoked:*",
-        "chat_rate:*", "images_rate:*",
+        "chat_rate:*", "images_rate:*", "code_rate:*",
     )
     for pattern in rate_patterns:
         keys = [k async for k in redis.scan_iter(pattern, count=1000)]
@@ -109,7 +116,7 @@ async def _flush_test_state() -> None:
 
 def _reset_metagraph_state() -> None:
     """Reset metagraph test state to freshly-synced defaults."""
-    for netuid in (1, 19):
+    for netuid in (1, 19, 62):
         state = _test_metagraph_manager.get_state(netuid)
         if state is not None:
             state.metagraph = _mock_metagraph

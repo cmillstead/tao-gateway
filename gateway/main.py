@@ -21,6 +21,7 @@ from gateway.routing.selector import MinerSelector
 from gateway.subnets.registry import AdapterRegistry
 from gateway.subnets.sn1_text import SN1TextAdapter
 from gateway.subnets.sn19_image import SN19ImageAdapter
+from gateway.subnets.sn62_code import SN62CodeAdapter
 
 # Configure structlog before any logger calls — including module-level init
 setup_logging()
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         metagraph_manager.register_subnet(settings.sn1_netuid)
         metagraph_manager.register_subnet(settings.sn19_netuid)
+        metagraph_manager.register_subnet(settings.sn62_netuid)
         await metagraph_manager.start()
 
         try:
@@ -86,6 +88,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     f"Initial metagraph sync failed for SN{settings.sn19_netuid} — "
                     "cannot route requests without metagraph data"
                 )
+            if metagraph_manager.get_metagraph(settings.sn62_netuid) is None:
+                logger.error(
+                    "startup_metagraph_empty",
+                    netuid=settings.sn62_netuid,
+                )
+                raise RuntimeError(
+                    f"Initial metagraph sync failed for SN{settings.sn62_netuid} — "
+                    "cannot route requests without metagraph data"
+                )
         except BaseException:
             await metagraph_manager.stop()
             raise
@@ -95,6 +106,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         adapter_registry = AdapterRegistry()
         adapter_registry.register(SN1TextAdapter(), model_names=["tao-sn1"])
         adapter_registry.register(SN19ImageAdapter(), model_names=["tao-sn19"])
+        adapter_registry.register(SN62CodeAdapter(), model_names=["tao-sn62"])
 
         app.state.dendrite = dendrite
         app.state.metagraph_manager = metagraph_manager
