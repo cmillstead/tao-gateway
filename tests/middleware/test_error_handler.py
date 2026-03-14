@@ -30,13 +30,13 @@ async def test_includes_subnet_field():
 
 
 @pytest.mark.asyncio
-async def test_includes_miner_uid():
-    """MinerInvalidResponseError includes miner_uid in the response body."""
+async def test_miner_uid_omitted_from_response():
+    """MinerInvalidResponseError omits miner_uid from response body (SEC-018)."""
     exc = MinerInvalidResponseError(miner_uid="def67890", subnet="sn1")
     response = await gateway_exception_handler(_fake_request(), exc)
 
     body = json.loads(response.body)
-    assert body["error"]["miner_uid"] == "def67890"
+    assert "miner_uid" not in body["error"]
     assert response.status_code == 502
 
 

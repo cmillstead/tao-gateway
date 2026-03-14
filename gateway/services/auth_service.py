@@ -1,8 +1,9 @@
 import contextlib
 from datetime import UTC, datetime, timedelta
 
+import jwt
 from argon2.exceptions import VerifyMismatchError
-from jose import JWTError, jwt
+from jwt.exceptions import PyJWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,26 +45,35 @@ async def login(email: str, password: str, db: AsyncSession) -> str:
     return create_jwt_token(str(org.id))
 
 
+_JWT_ISSUER = "tao-gateway"
+_JWT_AUDIENCE = "tao-gateway-dashboard"
+
+
 def create_jwt_token(org_id: str) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": org_id,
+        "iss": _JWT_ISSUER,
+        "aud": _JWT_AUDIENCE,
         "iat": now,
         "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
     }
-    token: str = jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-    return token
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
 def verify_jwt_token(token: str) -> str:
     """Returns org_id string or raises AuthenticationError."""
     try:
         payload = jwt.decode(
-            token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            issuer=_JWT_ISSUER,
+            audience=_JWT_AUDIENCE,
         )
         sub: str | None = payload.get("sub")
         if sub is None:
             raise AuthenticationError("Invalid token")
         return sub
-    except JWTError as exc:
+    except PyJWTError as exc:
         raise AuthenticationError("Invalid or expired token") from exc

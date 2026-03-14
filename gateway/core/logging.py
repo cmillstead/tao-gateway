@@ -13,6 +13,13 @@ _SENSITIVE_PATTERNS = [
     "hotkey",
     "authorization",
     "cookie",
+    "email",
+    "database_url",
+    "redis_url",
+    "dsn",
+    "connection_string",
+    "wallet_path",
+    "client_ip",
 ]
 
 

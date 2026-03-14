@@ -43,6 +43,10 @@ class Settings(BaseSettings):
 
     # Rate limiting
     trusted_proxies: list[str] = []
+    chat_rate_limit_per_minute: int = 60
+
+    # CORS
+    allowed_origins: list[str] = []
 
     # Bittensor
     wallet_name: str = "default"

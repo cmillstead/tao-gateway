@@ -16,7 +16,8 @@ async def test_signup_creates_account(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_signup_duplicate_email_returns_409(client: AsyncClient) -> None:
+async def test_signup_duplicate_email_returns_generic_response(client: AsyncClient) -> None:
+    """Duplicate email returns 201 with generic response to prevent email enumeration."""
     await client.post(
         "/auth/signup",
         json={"email": "dupe@example.com", "password": "securepassword123"},
@@ -25,9 +26,9 @@ async def test_signup_duplicate_email_returns_409(client: AsyncClient) -> None:
         "/auth/signup",
         json={"email": "dupe@example.com", "password": "anotherpassword123"},
     )
-    assert response.status_code == 409
+    assert response.status_code == 201
     data = response.json()
-    assert data["error"]["type"] == "conflict"
+    assert data["message"] == "Account created successfully"
 
 
 @pytest.mark.asyncio

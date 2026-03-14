@@ -16,9 +16,7 @@ async def gateway_exception_handler(request: Request, exc: GatewayError) -> JSON
     subnet = getattr(exc, "subnet", None)
     if subnet is not None:
         body["subnet"] = subnet
-    miner_uid = getattr(exc, "miner_uid", None)
-    if miner_uid is not None:
-        body["miner_uid"] = miner_uid
+    # miner_uid intentionally omitted from client-facing responses (SEC-018)
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": body},

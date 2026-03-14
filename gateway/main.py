@@ -2,7 +2,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from gateway.api.router import router
@@ -124,6 +126,28 @@ app = FastAPI(
     version=settings.app_version,
     lifespan=lifespan,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+_MAX_BODY_SIZE = 1_000_000  # 1 MB
+
+
+@app.middleware("http")
+async def limit_request_body_size(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """Reject requests with Content-Length exceeding the maximum body size."""
+    content_length = request.headers.get("content-length")
+    if content_length is not None and int(content_length) > _MAX_BODY_SIZE:
+        return JSONResponse(
+            status_code=413,
+            content={"error": {"type": "request_too_large", "message": "Request body too large"}},
+        )
+    return await call_next(request)
+
 
 app.add_exception_handler(GatewayError, gateway_exception_handler)  # type: ignore[arg-type]
 app.include_router(router)

@@ -10,9 +10,9 @@ async def test_health_returns_200(client: AsyncClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["version"] == settings.app_version
-    assert data["database"] == "healthy"
-    assert data["redis"] == "healthy"
+    # Public endpoint only exposes top-level status (SEC-010)
+    assert "version" not in data
+    assert "database" not in data
 
 
 @pytest.mark.asyncio
@@ -36,7 +36,6 @@ async def test_health_degraded_when_db_down(client: AsyncClient) -> None:
 
     clear_health_cache()
 
-    # Override the dependency at the app level to inject a broken DB session
     from gateway.core.database import get_db
     from gateway.main import app
 
@@ -52,7 +51,6 @@ async def test_health_degraded_when_db_down(client: AsyncClient) -> None:
         data = response.json()
         assert response.status_code == 503
         assert data["status"] == "degraded"
-        assert data["database"] == "unhealthy"
     finally:
         app.dependency_overrides.pop(get_db, None)
         clear_health_cache()
@@ -66,40 +64,6 @@ async def test_health_cache_serves_cached_response(client: AsyncClient) -> None:
     resp2 = await client.get("/v1/health")
     assert resp2.status_code == 200
     assert resp1.json() == resp2.json()
-
-
-@pytest.mark.asyncio
-async def test_health_includes_metagraph_status(client: AsyncClient) -> None:
-    """Health endpoint includes metagraph sync status."""
-    from gateway.api.health import clear_health_cache
-
-    clear_health_cache()
-    response = await client.get("/v1/health")
-    data = response.json()
-    assert "metagraph" in data
-    assert "sn1" in data["metagraph"]
-    sn1 = data["metagraph"]["sn1"]
-    assert "netuid" in sn1
-    assert "is_stale" in sn1
-
-
-@pytest.mark.asyncio
-async def test_health_ok_without_metagraph_manager(client: AsyncClient) -> None:
-    """Health endpoint works when metagraph_manager is absent from app.state."""
-    from gateway.api.health import clear_health_cache
-    from gateway.main import app
-
-    clear_health_cache()
-    original = app.state.metagraph_manager
-    del app.state.metagraph_manager
-    try:
-        response = await client.get("/v1/health")
-        data = response.json()
-        assert response.status_code == 200
-        assert data["metagraph"] is None
-    finally:
-        app.state.metagraph_manager = original
-        clear_health_cache()
 
 
 @pytest.mark.asyncio
@@ -119,7 +83,6 @@ async def test_health_degraded_when_redis_down(client: AsyncClient) -> None:
         data = response.json()
         assert response.status_code == 503
         assert data["status"] == "degraded"
-        assert data["redis"] == "unhealthy"
     clear_health_cache()
 
 
@@ -131,7 +94,6 @@ async def test_health_degraded_when_metagraph_stale(client: AsyncClient) -> None
 
     clear_health_cache()
 
-    # Make the metagraph stale
     mgr = app.state.metagraph_manager
     state = mgr.get_state(settings.sn1_netuid)
     if state:
@@ -143,8 +105,6 @@ async def test_health_degraded_when_metagraph_stale(client: AsyncClient) -> None
         data = response.json()
         assert response.status_code == 503
         assert data["status"] == "degraded"
-        sn1 = data["metagraph"]["sn1"]
-        assert sn1["is_stale"] is True
     finally:
         if state:
             state.last_sync_time = original_time
