@@ -1,5 +1,4 @@
 import json
-import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -8,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import bittensor as bt
+import nh3
 import structlog
 
 from gateway.core.exceptions import (
@@ -40,37 +40,11 @@ class BaseAdapter(ABC):
     validation, sanitization. Concrete adapters provide only ~50 lines:
     to_synapse(), from_response(), sanitize_output(), get_config()."""
 
-    # Dangerous HTML tags that could execute code or load external content
-    _DANGEROUS_TAGS_RE = re.compile(
-        r"<\s*/?\s*(?:script|iframe|object|embed|form|input|button|textarea"
-        r"|select|style|link|meta|base|applet|svg)\b[^>]*>",
-        re.IGNORECASE | re.DOTALL,
-    )
-    # Content between script/style tags (strip payload, not just the tags)
-    _DANGEROUS_CONTENT_RE = re.compile(
-        r"<\s*(?:script|style)\b[^>]*>.*?<\s*/\s*(?:script|style)\s*>",
-        re.IGNORECASE | re.DOTALL,
-    )
-    # Event handler attributes on any tag (onerror, onload, onclick, etc.)
-    _EVENT_HANDLER_RE = re.compile(
-        r"<([^>]*?\s)on\w+\s*=[^>]*>",
-        re.IGNORECASE,
-    )
-    # javascript: protocol in attributes
-    _JS_PROTOCOL_RE = re.compile(
-        r"<[^>]*\s(?:href|src|action)\s*=\s*[\"']?\s*javascript\s*:[^>]*>",
-        re.IGNORECASE,
-    )
-
     def sanitize_text(self, text: str) -> str:
-        """Sanitize a single text string using shared dangerous-tag regexes."""
+        """Strip all HTML tags from miner output using nh3."""
         if not isinstance(text, str):
             return str(text) if text is not None else ""
-        text = self._DANGEROUS_CONTENT_RE.sub("", text)
-        text = self._DANGEROUS_TAGS_RE.sub("", text)
-        text = self._EVENT_HANDLER_RE.sub("", text)
-        text = self._JS_PROTOCOL_RE.sub("", text)
-        return text.replace("\x00", "")
+        return nh3.clean(text, tags=set()).replace("\x00", "")
 
     @abstractmethod
     def to_synapse(self, request_data: dict[str, Any]) -> bt.Synapse:
@@ -266,7 +240,7 @@ class BaseAdapter(ABC):
                 error=str(exc),
                 error_type=type(exc).__name__,
             )
-            yield self.sse_error("bad_gateway", str(exc), miner_uid)
+            yield self.sse_error("bad_gateway", "Miner communication error", miner_uid)
             yield SSE_DONE
             return
 
@@ -312,7 +286,14 @@ class BaseAdapter(ABC):
             )
         except Exception as exc:
             had_error = True
-            yield self.sse_error("bad_gateway", str(exc), miner_uid)
+            logger.warning(
+                "stream_chunk_error",
+                subnet=config.subnet_name,
+                miner_uid=miner_uid,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            yield self.sse_error("bad_gateway", "Miner communication error", miner_uid)
         finally:
             logger.info(
                 "stream_cleanup",

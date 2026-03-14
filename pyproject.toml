@@ -14,8 +14,9 @@ dependencies = [
     "redis[hiredis]",
     "bittensor",
     "argon2-cffi",
-    "python-jose[cryptography]",
     "structlog",
+    "pyjwt[crypto]>=2.12.1",
+    "nh3>=0.3.3",
 ]
 
 [dependency-groups]
@@ -55,7 +56,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["bittensor.*", "redis.*", "jose.*"]
+module = ["bittensor.*", "redis.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

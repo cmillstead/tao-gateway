@@ -1,3 +1,4 @@
+import ipaddress
 import random
 
 import bittensor as bt
@@ -7,6 +8,15 @@ from gateway.core.exceptions import SubnetUnavailableError
 from gateway.routing.metagraph_sync import MetagraphManager, SubnetMetagraphState
 
 logger = structlog.get_logger()
+
+
+def _is_safe_ip(ip_str: str) -> bool:
+    """Return False for private, loopback, link-local, and reserved IPs."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return addr.is_global
 
 
 class MinerSelector:
@@ -35,6 +45,13 @@ class MinerSelector:
             if stake <= 0:
                 continue
             if not axon.ip or axon.port == 0:
+                continue
+            if not _is_safe_ip(axon.ip):
+                logger.warning(
+                    "miner_unsafe_ip_skipped",
+                    uid=uid,
+                    ip=axon.ip,
+                )
                 continue
 
             eligible.append((uid, incentive, axon))

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
+from gateway.core.config import settings
+from gateway.core.exceptions import GatewayError, MinerInvalidResponseError, RateLimitExceededError
+from gateway.core.redis import get_redis, reset_redis
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
 from gateway.schemas.chat import ChatCompletionRequest, ChatCompletionResponse
 from gateway.subnets.base import SSE_DONE
@@ -20,6 +22,37 @@ if TYPE_CHECKING:
     from gateway.subnets.base import BaseAdapter
 
 logger = structlog.get_logger()
+
+_CHAT_RATE_LIMIT_LUA = """
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+"""
+_chat_rate_limit_script: Any = None
+_chat_rate_limit_script_redis: object | None = None
+
+
+async def _rate_limit_chat(api_key: ApiKeyInfo) -> None:
+    """Per-API-key rate limit on chat endpoint. Fails open if Redis is unavailable."""
+    key = f"chat_rate:{api_key.key_id}"
+    try:
+        redis = await get_redis()
+        global _chat_rate_limit_script, _chat_rate_limit_script_redis  # noqa: PLW0603
+        if _chat_rate_limit_script is None or _chat_rate_limit_script_redis is not redis:
+            _chat_rate_limit_script = redis.register_script(_CHAT_RATE_LIMIT_LUA)
+            _chat_rate_limit_script_redis = redis
+        raw_result = await _chat_rate_limit_script(keys=[key], args=[60])
+        current = int(raw_result)
+    except Exception:
+        logger.warning("chat_rate_limit_redis_unavailable")
+        await reset_redis()
+        return
+    if current > settings.chat_rate_limit_per_minute:
+        raise RateLimitExceededError("Chat rate limit exceeded. Try again later.")
+
+
 router = APIRouter()
 
 
@@ -29,6 +62,7 @@ async def create_chat_completion(
     request: Request,
     api_key: ApiKeyInfo = Depends(get_current_api_key),
 ) -> JSONResponse | StreamingResponse:
+    await _rate_limit_chat(api_key)
     adapter = request.app.state.adapter_registry.get_by_model(body.model)
     dendrite = request.app.state.dendrite
     miner_selector = request.app.state.miner_selector

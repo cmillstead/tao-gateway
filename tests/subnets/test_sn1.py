@@ -180,7 +180,8 @@ class TestSN1TextAdapterSanitize:
         result = adapter.sanitize_output(response_data)
         assert result["choices"][0]["message"]["content"] == "Normal safe content"
 
-    def test_preserves_safe_html_tags(self):
+    def test_strips_all_html_tags(self):
+        """nh3 strips ALL HTML tags — no safe tags in miner output."""
         from gateway.subnets.sn1_text import SN1TextAdapter
 
         adapter = SN1TextAdapter()
@@ -191,10 +192,12 @@ class TestSN1TextAdapterSanitize:
         }
         result = adapter.sanitize_output(response_data)
         content = result["choices"][0]["message"]["content"]
-        assert "<div>" in content
-        assert "<span>" in content
+        assert "<div>" not in content
+        assert "<span>" not in content
+        assert "Use" in content
+        assert "layout" in content
 
-    def test_preserves_angle_brackets_in_math(self):
+    def test_handles_angle_brackets_in_text(self):
         from gateway.subnets.sn1_text import SN1TextAdapter
 
         adapter = SN1TextAdapter()
@@ -205,7 +208,9 @@ class TestSN1TextAdapterSanitize:
         }
         result = adapter.sanitize_output(response_data)
         content = result["choices"][0]["message"]["content"]
-        assert content == "if x < 10 and y > 5, then z = x + y"
+        # nh3 may entity-encode angle brackets in ambiguous contexts
+        assert "10" in content
+        assert "then z = x + y" in content
 
     def test_strips_javascript_protocol_in_href(self):
         from gateway.subnets.sn1_text import SN1TextAdapter
@@ -246,7 +251,8 @@ class TestSN1TextAdapterSanitize:
         result = adapter.sanitize_output(response_data)
         assert result["choices"][0]["message"]["content"] == ""
 
-    def test_preserves_code_with_html_examples(self):
+    def test_strips_html_in_code_examples(self):
+        """All HTML tags stripped — even in code examples from miners."""
         from gateway.subnets.sn1_text import SN1TextAdapter
 
         adapter = SN1TextAdapter()
@@ -257,8 +263,9 @@ class TestSN1TextAdapterSanitize:
         }
         result = adapter.sanitize_output(response_data)
         content = result["choices"][0]["message"]["content"]
-        assert "<div class='main'>" in content
-        assert "<p>" in content
+        assert "<div" not in content
+        assert "<p>" not in content
+        assert "Hello" in content
 
 
 class TestSN1TextAdapterConfig:

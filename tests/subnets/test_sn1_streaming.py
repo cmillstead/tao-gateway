@@ -84,7 +84,8 @@ class TestSN1StreamingMethods:
         )
         data = json.loads(result[6:].strip())
         content = data["choices"][0]["delta"]["content"]
-        assert "<div>" in content
+        assert "<div>" not in content  # nh3 strips all tags
+        assert "layout" in content
 
     def test_sanitize_text_handles_none(self):
         adapter = SN1TextAdapter()

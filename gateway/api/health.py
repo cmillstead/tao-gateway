@@ -8,10 +8,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.core.config import settings
 from gateway.core.database import get_db
 from gateway.core.redis import try_get_redis
-from gateway.schemas.health import HealthResponse, SubnetHealthStatus
+from gateway.schemas.health import SubnetHealthStatus
 
 if TYPE_CHECKING:
     from gateway.routing.metagraph_sync import MetagraphManager
@@ -90,7 +89,7 @@ def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | N
 
 
 
-@router.get("/v1/health", response_model=HealthResponse)
+@router.get("/v1/health")
 async def health_check(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -127,22 +126,16 @@ async def health_check(
 
     is_healthy = db_status == redis_status == "healthy" and not metagraph_stale
     overall = "healthy" if is_healthy else "degraded"
-    result = HealthResponse(
-        status=overall,
-        version=settings.app_version,
-        database=db_status,
-        redis=redis_status,
-        metagraph=metagraph_status,
-    )
+    status_code = 200 if is_healthy else 503
+
+    # Public response: only expose top-level status, not component details
+    public_result = {"status": overall}
 
     # Only cache healthy responses so degraded state is not sticky.
-    # Serialize once and reuse to avoid repeated model_dump() calls.
-    result_dict = result.model_dump()
     if is_healthy:
-        _health_cache["result"] = result_dict
+        _health_cache["result"] = public_result
         _health_cache["time"] = now
     else:
         _health_cache.clear()
 
-    status_code = 200 if is_healthy else 503
-    return JSONResponse(content=result_dict, status_code=status_code)
+    return JSONResponse(content=public_result, status_code=status_code)

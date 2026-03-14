@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
-from jose import jwt
 
 from gateway.core.config import settings
 from gateway.core.exceptions import AuthenticationError
@@ -25,15 +25,20 @@ def test_jwt_create_and_verify() -> None:
     assert result == org_id
 
 
-def test_jwt_contains_iat_claim() -> None:
+def test_jwt_contains_required_claims() -> None:
     org_id = "550e8400-e29b-41d4-a716-446655440000"
     token = create_jwt_token(org_id)
     payload = jwt.decode(
-        token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+        token,
+        settings.jwt_secret_key,
+        algorithms=[settings.jwt_algorithm],
+        audience="tao-gateway-dashboard",
     )
     assert "iat" in payload
     assert "exp" in payload
     assert "sub" in payload
+    assert payload["iss"] == "tao-gateway"
+    assert payload["aud"] == "tao-gateway-dashboard"
     assert payload["iat"] <= payload["exp"]
 
 

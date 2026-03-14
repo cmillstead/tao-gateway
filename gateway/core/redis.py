@@ -36,7 +36,10 @@ async def get_redis() -> Redis:
                 redis_client = client
             except Exception:
                 _last_failure_time = time.monotonic()
-                logger.error("redis_connection_failed", redis_url=settings.redis_url[:20] + "****")
+                # Log only host portion — never credentials
+                url = settings.redis_url
+                safe_url = url.split("@")[-1] if "@" in url else url.split("//")[-1]
+                logger.error("redis_connection_failed", redis_host=safe_url)
                 raise
     return redis_client
 
