@@ -80,6 +80,7 @@ from gateway.subnets.sn62_code import SN62CodeAdapter  # noqa: E402
 app.state.metagraph_manager = _test_metagraph_manager
 app.state.miner_selector = MinerSelector(_test_metagraph_manager)
 app.state.dendrite = _mock_bt_dendrite
+app.state.start_time = _time.time()
 _test_adapter_registry = AdapterRegistry()
 _test_adapter_registry.register(SN1TextAdapter(), model_names=["tao-sn1"])
 _test_adapter_registry.register(SN19ImageAdapter(), model_names=["tao-sn19"])

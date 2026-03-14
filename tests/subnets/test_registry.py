@@ -4,7 +4,7 @@ import pytest
 
 from gateway.core.exceptions import SubnetUnavailableError
 from gateway.subnets.base import AdapterConfig, BaseAdapter
-from gateway.subnets.registry import AdapterRegistry
+from gateway.subnets.registry import AdapterInfo, AdapterRegistry
 
 
 class StubAdapter(BaseAdapter):
@@ -54,3 +54,63 @@ class TestAdapterRegistry:
         registry.register(adapter, model_names=["tao-sn1", "sn1-text"])
         assert registry.get_by_model("tao-sn1") is adapter
         assert registry.get_by_model("sn1-text") is adapter
+
+
+class TestAdapterRegistryListAll:
+    def test_list_all_empty_registry(self):
+        registry = AdapterRegistry()
+        assert registry.list_all() == []
+
+    def test_list_all_returns_all_registered(self):
+        registry = AdapterRegistry()
+        a1 = StubAdapter(1, "sn1")
+        a2 = StubAdapter(19, "sn19")
+        registry.register(a1, model_names=["tao-sn1"])
+        registry.register(a2, model_names=["tao-sn19"])
+        result = registry.list_all()
+        assert len(result) == 2
+
+    def test_list_all_preserves_model_names(self):
+        registry = AdapterRegistry()
+        adapter = StubAdapter(1, "sn1")
+        registry.register(adapter, model_names=["tao-sn1"])
+        result = registry.list_all()
+        assert result[0].model_names == ["tao-sn1"]
+
+    def test_list_all_returns_adapter_info(self):
+        registry = AdapterRegistry()
+        adapter = StubAdapter(62, "sn62")
+        registry.register(adapter, model_names=["tao-sn62"])
+        result = registry.list_all()
+        info = result[0]
+        assert isinstance(info, AdapterInfo)
+        assert info.config.netuid == 62
+        assert info.config.subnet_name == "sn62"
+        assert info.model_names == ["tao-sn62"]
+
+    def test_list_all_with_no_model_names(self):
+        registry = AdapterRegistry()
+        adapter = StubAdapter(1, "sn1")
+        registry.register(adapter)
+        result = registry.list_all()
+        assert result[0].model_names == []
+
+    def test_list_all_with_multiple_model_names(self):
+        registry = AdapterRegistry()
+        adapter = StubAdapter(1, "sn1")
+        registry.register(adapter, model_names=["tao-sn1", "gpt-3.5-turbo"])
+        result = registry.list_all()
+        assert result[0].model_names == ["tao-sn1", "gpt-3.5-turbo"]
+
+
+class TestAdapterRegistryGetAllNetuids:
+    def test_get_all_netuids_empty(self):
+        registry = AdapterRegistry()
+        assert registry.get_all_netuids() == []
+
+    def test_get_all_netuids_returns_all(self):
+        registry = AdapterRegistry()
+        registry.register(StubAdapter(1, "sn1"), model_names=["tao-sn1"])
+        registry.register(StubAdapter(19, "sn19"), model_names=["tao-sn19"])
+        registry.register(StubAdapter(62, "sn62"), model_names=["tao-sn62"])
+        assert sorted(registry.get_all_netuids()) == [1, 19, 62]

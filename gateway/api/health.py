@@ -7,9 +7,10 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from gateway.core.config import settings
 from gateway.core.database import get_session_factory
 from gateway.core.redis import try_get_redis
-from gateway.schemas.health import SubnetHealthStatus
+from gateway.schemas.health import HealthResponse, SubnetHealthStatus
 
 if TYPE_CHECKING:
     from gateway.routing.metagraph_sync import MetagraphManager
@@ -78,14 +79,33 @@ def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | N
             last_sync = datetime.fromtimestamp(
                 state.last_sync_time, tz=UTC
             ).isoformat()
-        result[f"sn{netuid}"] = SubnetHealthStatus(
+
+        neuron_count: int | None = None
+        if state.metagraph is not None:
+            neuron_count = int(state.metagraph.n)
+
+        # Derive subnet status
+        if state.metagraph is None:
+            subnet_status = "unavailable"
+        elif state.is_stale:
+            subnet_status = "degraded"
+        else:
+            subnet_status = "healthy"
+
+        subnet_name = f"sn{netuid}"
+        # Do not expose sync error details in the public response —
+        # error categories aid reconnaissance (SEC-010).  Errors are
+        # already logged at source by MetagraphManager._sync_subnet().
+        result[subnet_name] = SubnetHealthStatus(
             netuid=netuid,
+            subnet_name=subnet_name,
+            status=subnet_status,
+            neuron_count=neuron_count,
             last_sync=last_sync,
             is_stale=state.is_stale,
-            sync_error=_sanitize_sync_error(state.last_sync_error),
+            sync_error=None,
         )
     return result
-
 
 
 @router.get("/v1/health")
@@ -127,14 +147,24 @@ async def health_check(
     overall = "healthy" if is_healthy else "degraded"
     status_code = 200 if is_healthy else 503
 
-    # Public response: only expose top-level status, not component details
-    public_result = {"status": overall}
+    start_time: float = getattr(request.app.state, "start_time", time.time())
+    uptime_seconds = round(time.time() - start_time, 1)
+
+    response = HealthResponse(
+        status=overall,
+        version=settings.app_version,
+        uptime_seconds=uptime_seconds,
+        database=db_status,
+        redis=redis_status,
+        subnets=metagraph_status or {},
+    )
+    result = response.model_dump()
 
     # Only cache healthy responses so degraded state is not sticky.
     if is_healthy:
-        _health_cache["result"] = public_result
+        _health_cache["result"] = result
         _health_cache["time"] = now
     else:
         _health_cache.clear()
 
-    return JSONResponse(content=public_result, status_code=status_code)
+    return JSONResponse(content=result, status_code=status_code)
