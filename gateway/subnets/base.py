@@ -12,6 +12,7 @@ import bittensor as bt
 import nh3
 import structlog
 
+from gateway.core.constants import HDR_LATENCY_MS, HDR_MINER_UID, HDR_SUBNET
 from gateway.core.exceptions import (
     MinerInvalidResponseError,
     MinerTimeoutError,
@@ -96,18 +97,18 @@ class BaseAdapter(ABC):
     ) -> None:
         """Record a scoring observation if scorer is available.
 
-        When success is True, content sampling is applied: response_complete
-        is set to True only if the request is sampled (random draw against
-        scorer.sample_rate), otherwise it is set to None (not sampled, gets
-        full completeness credit).
+        Sampling is applied internally: for successful responses where
+        response_complete is provided, the observation is only sampled
+        at scorer.sample_rate. Un-sampled observations pass
+        response_complete=None (gets default completeness credit).
         """
         if scorer is None:
             return
         from gateway.routing.scorer import ScoreObservation
 
         # Apply content sampling for successful responses
-        if success and response_complete is not None:
-            response_complete = True if random.random() < scorer.sample_rate else None
+        if success and response_complete is not None and random.random() >= scorer.sample_rate:
+            response_complete = None  # Not sampled
 
         scorer.record_observation(
             ScoreObservation(
@@ -222,9 +223,9 @@ class BaseAdapter(ABC):
 
         # 7. Gateway headers
         headers = {
-            "X-TaoGateway-Miner-UID": miner_uid,
-            "X-TaoGateway-Latency-Ms": str(elapsed_ms),
-            "X-TaoGateway-Subnet": config.subnet_name,
+            HDR_MINER_UID: miner_uid,
+            HDR_LATENCY_MS: str(elapsed_ms),
+            HDR_SUBNET: config.subnet_name,
         }
 
         return response_data, headers
@@ -269,8 +270,8 @@ class BaseAdapter(ABC):
         miner_uid = axon.hotkey[:MINER_UID_PREFIX_LEN]
 
         headers = {
-            "X-TaoGateway-Miner-UID": miner_uid,
-            "X-TaoGateway-Subnet": config.subnet_name,
+            HDR_MINER_UID: miner_uid,
+            HDR_SUBNET: config.subnet_name,
         }
 
         return headers, self._stream_generator(

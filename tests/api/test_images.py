@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 
 from gateway.subnets.registry import AdapterRegistry
+from tests.api.conftest import get_api_key
 
 # Minimal valid PNG for test responses
 _PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
@@ -13,22 +14,7 @@ _VALID_PNG_B64 = base64.b64encode(_PNG_HEADER).decode()
 
 
 async def _get_api_key(client: AsyncClient) -> str:
-    """Helper: signup + login + create API key, return the raw key."""
-    await client.post(
-        "/auth/signup",
-        json={"email": "imagetest@example.com", "password": "securepassword123"},
-    )
-    login_resp = await client.post(
-        "/auth/login",
-        json={"email": "imagetest@example.com", "password": "securepassword123"},
-    )
-    jwt = login_resp.json()["access_token"]
-    key_resp = await client.post(
-        "/dashboard/api-keys",
-        json={"environment": "live"},
-        headers={"Authorization": f"Bearer {jwt}"},
-    )
-    return key_resp.json()["key"]
+    return await get_api_key(client, "imagetest@example.com")
 
 
 def _make_success_synapse(

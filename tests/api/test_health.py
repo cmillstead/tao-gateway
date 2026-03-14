@@ -99,7 +99,9 @@ class TestHealthEndpoint:
         state = mgr.get_state(settings.sn1_netuid)
         assert state is not None
         original_time = state.last_sync_time
+        original_mono = state.last_sync_mono
         state.last_sync_time = 0.0  # force stale
+        state.last_sync_mono = -1.0
 
         try:
             response = await client.get("/v1/health")
@@ -113,6 +115,7 @@ class TestHealthEndpoint:
             assert data["subnets"]["sn19"]["status"] == "healthy"
         finally:
             state.last_sync_time = original_time
+            state.last_sync_mono = original_mono
             clear_health_cache()
 
     async def test_subnet_unavailable_when_no_metagraph(
@@ -124,8 +127,10 @@ class TestHealthEndpoint:
         assert state is not None
         original_mg = state.metagraph
         original_time = state.last_sync_time
+        original_mono = state.last_sync_mono
         state.metagraph = None
         state.last_sync_time = 0.0
+        state.last_sync_mono = -1.0
 
         try:
             response = await client.get("/v1/health")
@@ -135,6 +140,7 @@ class TestHealthEndpoint:
         finally:
             state.metagraph = original_mg
             state.last_sync_time = original_time
+            state.last_sync_mono = original_mono
             clear_health_cache()
 
     async def test_each_subnet_reported_independently(
@@ -146,7 +152,9 @@ class TestHealthEndpoint:
         sn19_state = mgr.get_state(19)
         assert sn19_state is not None
         original_time = sn19_state.last_sync_time
+        original_mono = sn19_state.last_sync_mono
         sn19_state.last_sync_time = 0.0
+        sn19_state.last_sync_mono = -1.0
 
         try:
             response = await client.get("/v1/health")
@@ -156,6 +164,7 @@ class TestHealthEndpoint:
             assert subnets["sn62"]["status"] == "healthy"
         finally:
             sn19_state.last_sync_time = original_time
+            sn19_state.last_sync_mono = original_mono
             clear_health_cache()
 
     async def test_cache_serves_cached_response(self, client: AsyncClient) -> None:

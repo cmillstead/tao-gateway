@@ -63,12 +63,10 @@ async def _rate_limit_auth(
         fallback_limit=settings.auth_rate_limit_per_minute,
         log_prefix="auth_rate_limit",
     )
-    if result == -1:
+    if not result.allowed:
         raise RateLimitExceededError(
             "Too many authentication attempts. Try again later."
         )
-    if result is not None and result > settings.auth_rate_limit_per_minute:
-        raise RateLimitExceededError("Too many authentication attempts. Try again later.")
 
 
 router = APIRouter(dependencies=[Depends(_rate_limit_auth)])

@@ -21,7 +21,8 @@ class SubnetMetagraphState:
 
     netuid: int
     metagraph: bt.Metagraph | None = None
-    last_sync_time: float = 0.0
+    last_sync_time: float = 0.0  # Wall-clock time for display/health reporting
+    last_sync_mono: float = -1.0  # Monotonic time for staleness (-1 = never synced)
     last_sync_error: str | None = None
     consecutive_failures: int = 0
     staleness_threshold: float = _DEFAULT_STALENESS_SECONDS
@@ -32,7 +33,9 @@ class SubnetMetagraphState:
         """Metagraph is stale if exceeded staleness threshold since last successful sync."""
         if self.metagraph is None:
             return True
-        return (time.time() - self.last_sync_time) > self.staleness_threshold
+        if self.last_sync_mono < 0:
+            return True
+        return (time.monotonic() - self.last_sync_mono) > self.staleness_threshold
 
 
 class MetagraphManager:
@@ -84,6 +87,7 @@ class MetagraphManager:
             )
             state.metagraph = metagraph
             state.last_sync_time = time.time()
+            state.last_sync_mono = time.monotonic()
             state.last_sync_error = None
             state.consecutive_failures = 0
             state.sync_generation += 1

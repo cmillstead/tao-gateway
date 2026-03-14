@@ -6,25 +6,11 @@ from httpx import AsyncClient
 
 from gateway.core.config import settings
 from gateway.subnets.registry import AdapterRegistry
+from tests.api.conftest import get_api_key
 
 
 async def _get_api_key(client: AsyncClient) -> str:
-    """Helper: signup + login + create API key, return the raw key."""
-    await client.post(
-        "/auth/signup",
-        json={"email": "codetest@example.com", "password": "securepassword123"},
-    )
-    login_resp = await client.post(
-        "/auth/login",
-        json={"email": "codetest@example.com", "password": "securepassword123"},
-    )
-    jwt = login_resp.json()["access_token"]
-    key_resp = await client.post(
-        "/dashboard/api-keys",
-        json={"environment": "live"},
-        headers={"Authorization": f"Bearer {jwt}"},
-    )
-    return key_resp.json()["key"]
+    return await get_api_key(client, "codetest@example.com")
 
 
 def _make_success_synapse(

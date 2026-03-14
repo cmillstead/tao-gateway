@@ -41,9 +41,13 @@ _CRED_URL_RE = re.compile(
 )
 
 
+_SENSITIVE_KEY_RE = re.compile(
+    "|".join(re.escape(p) for p in _SENSITIVE_PATTERNS)
+)
+
+
 def _is_sensitive_key(key: str) -> bool:
-    lower = key.lower()
-    return any(pattern in lower for pattern in _SENSITIVE_PATTERNS)
+    return _SENSITIVE_KEY_RE.search(key.lower()) is not None
 
 
 def redact_string_value(value: str) -> str:

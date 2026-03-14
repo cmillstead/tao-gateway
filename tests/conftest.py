@@ -114,6 +114,7 @@ def _reset_metagraph_state() -> None:
         if state is not None:
             state.metagraph = _mock_metagraph
             state.last_sync_time = _time.time()
+            state.last_sync_mono = _time.monotonic()
             state.last_sync_error = None
             state.consecutive_failures = 0
 

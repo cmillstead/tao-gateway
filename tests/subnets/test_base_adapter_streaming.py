@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from gateway.core.constants import HDR_MINER_UID
 from gateway.subnets.base import AdapterConfig, BaseAdapter
 from gateway.subnets.sn1_text import TextGenStreamingSynapse
 
@@ -125,7 +126,7 @@ class TestExecuteStream:
             adapter, {"model": "test"}, mock_dendrite, mock_miner_selector,
         )
 
-        assert "X-TaoGateway-Miner-UID" in headers
+        assert HDR_MINER_UID in headers
         text = "".join(chunks)
         assert "Hello" in text
         assert "world" in text

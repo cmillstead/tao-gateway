@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from gateway.core.constants import HDR_LATENCY_MS, HDR_MINER_UID, HDR_SUBNET
 from gateway.core.exceptions import (
     MinerInvalidResponseError,
     MinerTimeoutError,
@@ -101,9 +102,9 @@ class TestBaseAdapterExecute:
         )
 
         assert response == {"result": "Hi there"}
-        assert "X-TaoGateway-Miner-UID" in headers
-        assert "X-TaoGateway-Latency-Ms" in headers
-        assert headers["X-TaoGateway-Subnet"] == "test-sn"
+        assert HDR_MINER_UID in headers
+        assert HDR_LATENCY_MS in headers
+        assert headers[HDR_SUBNET] == "test-sn"
         mock_miner_selector.select_miner.assert_called_once_with(1)
 
     @pytest.mark.asyncio
@@ -118,7 +119,7 @@ class TestBaseAdapterExecute:
             miner_selector=mock_miner_selector,
         )
 
-        assert headers["X-TaoGateway-Miner-UID"] == "abcdef12"
+        assert headers[HDR_MINER_UID] == "abcdef12"
 
     @pytest.mark.asyncio
     async def test_timeout_raises_miner_timeout_error(
@@ -224,7 +225,7 @@ class TestBaseAdapterExecute:
             miner_selector=mock_miner_selector,
         )
 
-        assert headers["X-TaoGateway-Latency-Ms"].isdigit()
+        assert headers[HDR_LATENCY_MS].isdigit()
 
 
 class TestBaseAdapterScoring:

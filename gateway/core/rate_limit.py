@@ -8,6 +8,7 @@ uses TTL-based eviction and a size cap to prevent unbounded memory growth.
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -85,6 +86,15 @@ _lua_script: Any = None
 _lua_script_redis: object | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SimpleRateLimitResult:
+    """Result from the simple (auth) rate limiter."""
+
+    allowed: bool
+    count: int | None  # None when using in-memory fallback
+    source: str  # "redis" or "fallback"
+
+
 async def check_rate_limit(
     *,
     key: str,
@@ -93,16 +103,12 @@ async def check_rate_limit(
     fallback_limit: int = 10,
     fallback_window: float = 60.0,
     log_prefix: str = "rate_limit",
-) -> int | None:
+) -> SimpleRateLimitResult:
     """Check a fixed-window rate limit.
 
-    Returns the current request count on success.
-    When Redis is unavailable, falls back to the in-memory limiter and returns
-    ``None`` if the request is allowed.
-
-    Raises nothing on its own -- callers decide what to do with the count.
-    On Redis failure the in-memory fallback is used; if *that* denies the
-    request this function returns ``-1``.
+    Returns a result indicating whether the request is allowed and the
+    current count.  When Redis is unavailable, falls back to the
+    in-memory limiter.
     """
     global _lua_script, _lua_script_redis  # noqa: PLW0603
     try:
@@ -111,14 +117,17 @@ async def check_rate_limit(
             _lua_script = redis.register_script(_RATE_LIMIT_LUA)
             _lua_script_redis = redis
         raw_result = await _lua_script(keys=[key], args=[window_seconds])
-        return int(raw_result)
+        count = int(raw_result)
+        return SimpleRateLimitResult(
+            allowed=count <= limit, count=count, source="redis",
+        )
     except Exception:
         logger.warning("rate_limit_redis_unavailable", source=log_prefix)
         await reset_redis()
-        # In-memory fallback
-        if not _fallback_store.check(key, fallback_limit, fallback_window):
-            return -1
-        return None
+        allowed = _fallback_store.check(key, fallback_limit, fallback_window)
+        return SimpleRateLimitResult(
+            allowed=allowed, count=None, source="fallback",
+        )
 
 
 def clear_fallback_store() -> None:

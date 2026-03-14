@@ -6,6 +6,7 @@ import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from gateway.core.constants import HDR_LATENCY_MS, HDR_MINER_UID, HDR_SUBNET
 from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
 from gateway.middleware.rate_limit import RateLimitResult, enforce_rate_limit
@@ -74,7 +75,7 @@ async def _handle_stream(
         is_disconnected=request.is_disconnected,
         scorer=scorer,
     )
-    miner_uid = headers["X-TaoGateway-Miner-UID"]
+    miner_uid = headers[HDR_MINER_UID]
 
     async def _generator() -> AsyncGenerator[str, None]:
         had_error = False
@@ -165,15 +166,15 @@ async def _handle_non_stream(
             error=str(exc),
         )
         raise MinerInvalidResponseError(
-            miner_uid=headers.get("X-TaoGateway-Miner-UID", "unknown"),
-            subnet=headers.get("X-TaoGateway-Subnet", "unknown"),
+            miner_uid=headers.get(HDR_MINER_UID, "unknown"),
+            subnet=headers.get(HDR_SUBNET, "unknown"),
         ) from exc
 
     logger.info(
         "chat_completion_success",
         model=body.model,
-        miner_uid=headers.get("X-TaoGateway-Miner-UID"),
-        latency_ms=headers.get("X-TaoGateway-Latency-Ms"),
+        miner_uid=headers.get(HDR_MINER_UID),
+        latency_ms=headers.get(HDR_LATENCY_MS),
     )
 
     return JSONResponse(content=response_data, headers={**headers, **rate_result.to_headers()})
