@@ -52,7 +52,7 @@ development_status:
   # Epic 2: Multi-Subnet Expansion
   epic-2: in-progress
   2-1-sn19-image-generation-endpoint: done
-  2-2-sn62-code-generation-endpoint: backlog
+  2-2-sn62-code-generation-endpoint: done
   2-3-subnet-discovery-and-health: backlog
   2-4-adapter-registry-and-extensibility: backlog
   epic-2-retrospective: optional
