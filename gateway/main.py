@@ -31,6 +31,7 @@ from gateway.routing.selector import MinerSelector
 from gateway.subnets import ADAPTER_DEFINITIONS
 from gateway.subnets.registry import AdapterRegistry
 from gateway.tasks.score_flush import ScoreFlushTask
+from gateway.tasks.usage_aggregation import UsageAggregationTask
 
 # Configure structlog before any logger calls — including module-level init
 setup_logging()
@@ -144,9 +145,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.scorer = None
         app.state.score_flush_task = None
 
+    # Usage aggregation task (runs regardless of Bittensor)
+    usage_aggregation_task = UsageAggregationTask(
+        session_factory=get_session_factory(),
+        aggregation_interval=settings.usage_aggregation_interval_seconds,
+        retention_days=settings.usage_retention_days,
+    )
+    await usage_aggregation_task.start()
+    app.state.usage_aggregation_task = usage_aggregation_task
+
     yield
 
     # Shutdown — each step guarded so one failure doesn't skip the rest
+    try:
+        await usage_aggregation_task.stop()
+    except Exception:
+        logger.warning("shutdown_usage_aggregation_failed", exc_info=True)
     if score_flush_task is not None:
         try:
             await score_flush_task.stop()

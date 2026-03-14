@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+
 import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from gateway.core.constants import HDR_LATENCY_MS, HDR_MINER_UID, HDR_SUBNET
+from gateway.core.database import get_session_factory
 from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
 from gateway.middleware.rate_limit import enforce_rate_limit
+from gateway.middleware.usage import record_usage
 from gateway.schemas.images import ImageGenerationRequest, ImageGenerationResponse
 
 logger = structlog.get_logger()
@@ -35,6 +39,8 @@ async def generate_image(
         size=body.size,
     )
 
+    config = adapter.get_config()
+
     try:
         response_data, headers = await adapter.execute(
             request_data=body.model_dump(),
@@ -49,6 +55,17 @@ async def generate_image(
             error_type=exc.error_type,
             status_code=exc.status_code,
         )
+        asyncio.create_task(record_usage(
+            session_factory=get_session_factory(),
+            api_key_id=api_key.key_id,
+            org_id=api_key.org_id,
+            subnet_name=config.subnet_name,
+            netuid=config.netuid,
+            endpoint="/v1/images/generate",
+            miner_uid=None,
+            latency_ms=0,
+            status_code=exc.status_code,
+        ))
         raise
     except Exception as exc:
         logger.error(
@@ -72,6 +89,18 @@ async def generate_image(
             miner_uid=headers.get(HDR_MINER_UID, "unknown"),
             subnet=headers.get(HDR_SUBNET, "unknown"),
         ) from exc
+
+    asyncio.create_task(record_usage(
+        session_factory=get_session_factory(),
+        api_key_id=api_key.key_id,
+        org_id=api_key.org_id,
+        subnet_name=config.subnet_name,
+        netuid=config.netuid,
+        endpoint="/v1/images/generate",
+        miner_uid=headers.get(HDR_MINER_UID),
+        latency_ms=int(headers.get(HDR_LATENCY_MS, 0)),
+        status_code=200,
+    ))
 
     logger.info(
         "image_generation_success",

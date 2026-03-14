@@ -66,17 +66,17 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Developer Dashboard & Self-Service
-  epic-4: in-progress
+  epic-4: done
   4-1-dashboard-shell-and-authentication: done
   4-2-api-key-management: done
   4-3-account-overview-and-quickstart: done
   4-4-api-client-generation-and-dashboard-build-pipeline: done
-  4-5-password-reset-flow: backlog
+  4-5-password-reset-flow: deferred # Phase 2 - requires email infrastructure
   epic-4-retrospective: optional
 
   # Epic 5: Usage Monitoring & Analytics
-  epic-5: backlog
-  5-1-usage-metering-and-storage: backlog
+  epic-5: in-progress
+  5-1-usage-metering-and-storage: done
   5-2-usage-dashboard-and-quota-display: backlog
   5-3-debug-mode-and-content-cleanup: backlog
   epic-5-retrospective: optional
