@@ -19,6 +19,7 @@ class ApiKey(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     prefix: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
     key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(

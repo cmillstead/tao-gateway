@@ -160,6 +160,268 @@ async def test_list_api_keys_pagination_bounds(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_api_key_with_name(client: AsyncClient) -> None:
+    """Creating a key with a custom name persists and returns it."""
+    token = await _signup_and_get_jwt(client, "keyname@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    response = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live", "name": "production"},
+        headers=headers,
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "production"
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_without_name_auto_generates(
+    client: AsyncClient,
+) -> None:
+    """Creating a key without a name auto-generates 'Key N'."""
+    token = await _signup_and_get_jwt(client, "autoname@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    resp1 = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    assert resp1.status_code == 201
+    assert resp1.json()["name"] == "Key 1"
+
+    resp2 = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    assert resp2.status_code == 201
+    assert resp2.json()["name"] == "Key 2"
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_includes_name(client: AsyncClient) -> None:
+    """List response includes the name field."""
+    token = await _signup_and_get_jwt(client, "listname@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live", "name": "my-key"},
+        headers=headers,
+    )
+    resp = await client.get("/dashboard/api-keys", headers=headers)
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) >= 1
+    assert items[0]["name"] == "my-key"
+
+
+@pytest.mark.asyncio
+async def test_rotate_api_key_creates_new_revokes_old(
+    client: AsyncClient,
+) -> None:
+    """Rotation creates a new key and revokes the old one atomically."""
+    token = await _signup_and_get_jwt(client, "rotate@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live", "name": "rotatable"},
+        headers=headers,
+    )
+    old_key_id = create_resp.json()["id"]
+
+    rotate_resp = await client.post(
+        f"/dashboard/api-keys/rotate/{old_key_id}",
+        headers=headers,
+    )
+    assert rotate_resp.status_code == 201
+    data = rotate_resp.json()
+    assert data["revoked_key_id"] == old_key_id
+    assert data["new_key"]["key"].startswith("tao_sk_live_")
+    assert data["new_key"]["name"] == "rotatable"
+    assert data["new_key"]["id"] != old_key_id
+
+
+@pytest.mark.asyncio
+async def test_rotate_api_key_returns_full_new_key(
+    client: AsyncClient,
+) -> None:
+    """Rotation response contains the full new key (shown once)."""
+    token = await _signup_and_get_jwt(client, "rotatefull@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "test"},
+        headers=headers,
+    )
+    old_id = create_resp.json()["id"]
+
+    rotate_resp = await client.post(
+        f"/dashboard/api-keys/rotate/{old_id}",
+        headers=headers,
+    )
+    new_key = rotate_resp.json()["new_key"]["key"]
+    assert new_key.startswith("tao_sk_test_")
+    assert len(new_key) > 20
+
+
+@pytest.mark.asyncio
+async def test_rotate_nonexistent_key_returns_404(
+    client: AsyncClient,
+) -> None:
+    token = await _signup_and_get_jwt(client, "rotatemissing@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = await client.post(
+        "/dashboard/api-keys/rotate/00000000-0000-0000-0000-000000000000",
+        headers=headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_rotate_revoked_key_returns_404(
+    client: AsyncClient,
+) -> None:
+    """Cannot rotate an already-revoked key."""
+    token = await _signup_and_get_jwt(client, "rotaterevoked@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    key_id = create_resp.json()["id"]
+
+    # Revoke the key first
+    await client.delete(
+        f"/dashboard/api-keys/{key_id}", headers=headers,
+    )
+
+    # Try to rotate the revoked key
+    resp = await client.post(
+        f"/dashboard/api-keys/rotate/{key_id}",
+        headers=headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_with_include_revoked(
+    client: AsyncClient,
+) -> None:
+    """include_revoked=true shows revoked keys in listing."""
+    token = await _signup_and_get_jwt(client, "includerevoked@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    key_id = create_resp.json()["id"]
+    await client.delete(
+        f"/dashboard/api-keys/{key_id}", headers=headers,
+    )
+
+    # Default excludes revoked
+    resp_default = await client.get(
+        "/dashboard/api-keys", headers=headers,
+    )
+    assert not any(
+        k["id"] == key_id for k in resp_default.json()["items"]
+    )
+
+    # With include_revoked=true
+    resp_revoked = await client.get(
+        "/dashboard/api-keys?include_revoked=true",
+        headers=headers,
+    )
+    items = resp_revoked.json()["items"]
+    revoked = [k for k in items if k["id"] == key_id]
+    assert len(revoked) == 1
+    assert revoked[0]["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_default_excludes_revoked(
+    client: AsyncClient,
+) -> None:
+    """Default listing (no include_revoked) hides revoked keys."""
+    token = await _signup_and_get_jwt(client, "defaultrevoked@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    key_id = create_resp.json()["id"]
+    await client.delete(
+        f"/dashboard/api-keys/{key_id}", headers=headers,
+    )
+
+    resp = await client.get("/dashboard/api-keys", headers=headers)
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_rotate_other_orgs_key_returns_404(
+    client: AsyncClient,
+) -> None:
+    """Org A cannot rotate org B's key (cross-tenant isolation)."""
+    token_a = await _signup_and_get_jwt(client, "rot_org_a@example.com")
+    token_b = await _signup_and_get_jwt(client, "rot_org_b@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers_b,
+    )
+    key_id_b = create_resp.json()["id"]
+
+    resp = await client.post(
+        f"/dashboard/api-keys/rotate/{key_id_b}",
+        headers=headers_a,
+    )
+    assert resp.status_code == 404
+
+    # Verify key is still active for org B
+    list_resp = await client.get("/dashboard/api-keys", headers=headers_b)
+    keys = list_resp.json()["items"]
+    assert any(k["id"] == key_id_b and k["is_active"] for k in keys)
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_name_too_long_returns_422(
+    client: AsyncClient,
+) -> None:
+    """Name exceeding 100 characters is rejected."""
+    token = await _signup_and_get_jwt(client, "longname@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live", "name": "x" * 101},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_empty_name_auto_generates(
+    client: AsyncClient,
+) -> None:
+    """Empty string name triggers auto-generation."""
+    token = await _signup_and_get_jwt(client, "emptyname@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live", "name": ""},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "Key 1"
+
+
+@pytest.mark.asyncio
 async def test_create_api_key_rejects_when_limit_reached(client: AsyncClient) -> None:
     """Creating more than MAX_KEYS_PER_ORG active keys returns 422."""
     from unittest.mock import patch

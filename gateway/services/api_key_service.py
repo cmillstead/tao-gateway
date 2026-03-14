@@ -1,3 +1,4 @@
+import re
 import secrets
 import uuid
 from typing import Literal
@@ -33,15 +34,44 @@ def generate_api_key(env: Environment = "live") -> tuple[str, str, str]:
     return full_key, prefix, key_hash
 
 
+_KEY_NAME_RE = re.compile(r"^Key (\d+)$")
+
+
+async def _next_key_name(org_id: uuid.UUID, db: AsyncSession) -> str:
+    """Generate an auto-incrementing key name like 'Key 1', 'Key 2', etc.
+
+    Finds the highest existing 'Key N' number to avoid duplicates after
+    revocations or gaps.
+    """
+    result = await db.scalars(
+        select(ApiKey.name).where(ApiKey.org_id == org_id)
+    )
+    max_num = 0
+    for name in result.all():
+        if name and (m := _KEY_NAME_RE.match(name)):
+            max_num = max(max_num, int(m.group(1)))
+    return f"Key {max_num + 1}"
+
+
 async def create_api_key(
-    org_id: uuid.UUID, env: Environment, db: AsyncSession
+    org_id: uuid.UUID,
+    env: Environment,
+    db: AsyncSession,
+    *,
+    name: str | None = None,
 ) -> tuple[ApiKey, str]:
     """Create and persist a new API key. Returns (api_key_record, full_key)."""
-    # Enforce per-org key limit
+    # Enforce per-org key limit.
+    # Lock active keys for this org to serialize concurrent creates.
+    await db.scalars(
+        select(ApiKey.id)
+        .where(ApiKey.org_id == org_id, ApiKey.is_active.is_(True))
+        .with_for_update()
+    )
     active_count = await db.scalar(
-        select(func.count()).select_from(ApiKey).where(
-            ApiKey.org_id == org_id, ApiKey.is_active.is_(True)
-        )
+        select(func.count())
+        .select_from(ApiKey)
+        .where(ApiKey.org_id == org_id, ApiKey.is_active.is_(True))
     )
     if active_count is not None and active_count >= MAX_KEYS_PER_ORG:
         raise GatewayError(
@@ -50,8 +80,9 @@ async def create_api_key(
             error_type="validation_error",
         )
 
+    key_name = name.strip() if name and name.strip() else await _next_key_name(org_id, db)
     full_key, prefix, key_hash = generate_api_key(env)
-    api_key = ApiKey(org_id=org_id, prefix=prefix, key_hash=key_hash)
+    api_key = ApiKey(org_id=org_id, name=key_name, prefix=prefix, key_hash=key_hash)
     db.add(api_key)
     await db.commit()
     await db.refresh(api_key)
@@ -118,3 +149,60 @@ async def revoke_api_key(
             logger.warning("revoke_cache_tombstone_failed", key_id=str(key_id))
 
     return key
+
+
+async def rotate_api_key(
+    key_id: uuid.UUID,
+    org_id: uuid.UUID,
+    db: AsyncSession,
+    redis: Redis | None,
+) -> tuple[ApiKey, str, ApiKey]:
+    """Rotate an API key: create new key then revoke old in single transaction.
+
+    Returns (new_api_key, new_full_key, old_api_key).
+    """
+    old_key = await db.scalar(
+        select(ApiKey)
+        .where(ApiKey.id == key_id, ApiKey.org_id == org_id, ApiKey.is_active.is_(True))
+        .with_for_update()
+    )
+    if old_key is None:
+        raise GatewayError(
+            "API key not found or already revoked",
+            status_code=404,
+            error_type="not_found",
+        )
+
+    # Determine environment from the old key prefix
+    env: Environment = "test" if old_key.prefix.startswith("tao_sk_test_") else "live"
+
+    # Create new key in the same transaction
+    full_key, prefix, key_hash = generate_api_key(env)
+    new_key = ApiKey(
+        org_id=org_id,
+        name=old_key.name,
+        prefix=prefix,
+        key_hash=key_hash,
+    )
+    db.add(new_key)
+
+    # Revoke old key in the same transaction
+    old_key.is_active = False
+
+    await db.commit()
+    await db.refresh(new_key)
+    await db.refresh(old_key)
+
+    # Best-effort cache invalidation for old key
+    if redis is not None:
+        cache_key = f"api_key:{old_key.prefix}"
+        tombstone_key = f"api_key_revoked:{old_key.prefix}"
+        try:
+            async with redis.pipeline(transaction=True) as pipe:
+                pipe.set(tombstone_key, "1", ex=_REVOCATION_TOMBSTONE_TTL)
+                pipe.delete(cache_key)
+                await pipe.execute()
+        except Exception:
+            logger.warning("rotate_cache_tombstone_failed", key_id=str(key_id))
+
+    return new_key, full_key, old_key

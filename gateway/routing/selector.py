@@ -110,7 +110,7 @@ class MinerSelector:
         (selected,) = random.choices(eligible, weights=weights, k=1)
         sel_uid, sel_incentive, sel_axon = selected
 
-        logger.info(
+        logger.debug(
             "miner_selected",
             netuid=netuid,
             miner_uid=sel_uid,

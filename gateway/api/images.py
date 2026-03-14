@@ -4,6 +4,7 @@ import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
+from gateway.core.constants import HDR_LATENCY_MS, HDR_MINER_UID, HDR_SUBNET
 from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
 from gateway.middleware.rate_limit import enforce_rate_limit
@@ -68,15 +69,15 @@ async def generate_image(
             error=str(exc),
         )
         raise MinerInvalidResponseError(
-            miner_uid=headers.get("X-TaoGateway-Miner-UID", "unknown"),
-            subnet=headers.get("X-TaoGateway-Subnet", "unknown"),
+            miner_uid=headers.get(HDR_MINER_UID, "unknown"),
+            subnet=headers.get(HDR_SUBNET, "unknown"),
         ) from exc
 
     logger.info(
         "image_generation_success",
         model=body.model,
-        miner_uid=headers.get("X-TaoGateway-Miner-UID"),
-        latency_ms=headers.get("X-TaoGateway-Latency-Ms"),
+        miner_uid=headers.get(HDR_MINER_UID),
+        latency_ms=headers.get(HDR_LATENCY_MS),
     )
 
     return JSONResponse(content=response_data, headers={**headers, **rate_result.to_headers()})

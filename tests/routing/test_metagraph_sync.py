@@ -44,7 +44,10 @@ class TestSubnetMetagraphState:
 
     def test_not_stale_when_recent_sync(self) -> None:
         state = SubnetMetagraphState(
-            netuid=1, metagraph=MagicMock(), last_sync_time=time.time()
+            netuid=1,
+            metagraph=MagicMock(),
+            last_sync_time=time.time(),
+            last_sync_mono=time.monotonic(),
         )
         assert state.is_stale is False
 
@@ -124,6 +127,7 @@ class TestMetagraphManager:
         assert state is not None
         # Artificially age the sync time
         state.last_sync_time = time.time() - 400  # >5min
+        state.last_sync_mono = time.monotonic() - 400
         assert state.is_stale is True
 
     @pytest.mark.asyncio
