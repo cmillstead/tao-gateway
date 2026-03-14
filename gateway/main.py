@@ -1,13 +1,15 @@
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from gateway.api.router import router
@@ -180,6 +182,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
@@ -268,3 +271,20 @@ app.add_exception_handler(GatewayError, gateway_exception_handler)  # type: igno
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
 app.add_exception_handler(Exception, internal_exception_handler)
 app.include_router(router)
+
+# Serve dashboard SPA static files (if built)
+_DASHBOARD_DIST = Path(__file__).resolve().parent.parent / "dashboard" / "dist"
+if _DASHBOARD_DIST.is_dir():
+    # API routes are already mounted above via include_router, so they take priority.
+    # Mount static assets (JS, CSS, fonts) under /assets.
+    _ASSETS_DIR = _DASHBOARD_DIST / "assets"
+    if _ASSETS_DIR.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="dashboard-assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa_fallback(path: str) -> FileResponse:
+        """Catch-all: serve index.html for SPA client-side routing."""
+        file_path = _DASHBOARD_DIST / path
+        if file_path.is_file() and file_path.resolve().is_relative_to(_DASHBOARD_DIST):
+            return FileResponse(str(file_path))
+        return FileResponse(str(_DASHBOARD_DIST / "index.html"))

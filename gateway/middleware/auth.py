@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import structlog
 from argon2.exceptions import VerifyMismatchError
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,13 +122,24 @@ async def get_current_api_key(
 
 
 async def get_current_org_id(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> uuid.UUID:
-    """Validate JWT token, return org_id. Used for dashboard endpoints."""
-    if credentials is None:
-        raise AuthenticationError("Missing authorization header")
+    """Validate JWT token, return org_id. Used for dashboard endpoints.
 
-    org_id_str = verify_jwt_token(credentials.credentials)
+    Checks Bearer header first (API callers), then falls back to
+    httpOnly cookie (dashboard SPA).
+    """
+    token: str | None = None
+    if credentials is not None:
+        token = credentials.credentials
+    else:
+        token = request.cookies.get("access_token")
+
+    if token is None:
+        raise AuthenticationError("Missing authorization")
+
+    org_id_str = verify_jwt_token(token)
     try:
         return uuid.UUID(org_id_str)
     except ValueError as exc:

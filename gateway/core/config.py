@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field(default=_INSECURE_DEFAULT_SECRET, repr=False)
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
     auth_rate_limit_per_minute: int = 30
 
     # Rate limiting

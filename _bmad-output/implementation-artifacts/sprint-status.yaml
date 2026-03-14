@@ -58,7 +58,7 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Rate Limiting & API Hardening
-  epic-3: in-progress
+  epic-3: done
   3-1-rate-limiting-engine: done
   3-2-error-handling-and-response-metadata: done
   3-3-security-hardening: done
@@ -66,8 +66,8 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Developer Dashboard & Self-Service
-  epic-4: backlog
-  4-1-dashboard-shell-and-authentication: backlog
+  epic-4: in-progress
+  4-1-dashboard-shell-and-authentication: done
   4-2-api-key-management: backlog
   4-3-account-overview-and-quickstart: backlog
   4-4-api-client-generation-and-dashboard-build-pipeline: backlog
