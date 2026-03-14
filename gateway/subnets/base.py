@@ -310,12 +310,21 @@ class BaseAdapter(ABC):
 
     @staticmethod
     def sse_error(error_type: str, message: str, miner_uid: str) -> str:
-        """Format an SSE error event."""
+        """Format an SSE error event.
+
+        miner_uid is accepted for structured logging but intentionally
+        omitted from the client-facing payload (SEC-018).
+        """
+        logger.warning(
+            "sse_error",
+            error_type=error_type,
+            message=message,
+            miner_uid=miner_uid,
+        )
         data = {
             "error": {
                 "type": error_type,
                 "message": message,
-                "miner_uid": miner_uid,
             }
         }
         return f"data: {json.dumps(data)}\n\n"

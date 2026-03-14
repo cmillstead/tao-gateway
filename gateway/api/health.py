@@ -3,12 +3,11 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.core.database import get_db
+from gateway.core.database import get_session_factory
 from gateway.core.redis import try_get_redis
 from gateway.schemas.health import SubnetHealthStatus
 
@@ -92,7 +91,6 @@ def _get_metagraph_status(request: Request) -> dict[str, SubnetHealthStatus] | N
 @router.get("/v1/health")
 async def health_check(
     request: Request,
-    db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     now = time.monotonic()
     cached_time = _health_cache.get("time")
@@ -103,7 +101,8 @@ async def health_check(
     redis_status = "healthy"
 
     try:
-        await db.execute(text("SELECT 1"))
+        async with get_session_factory()() as db:
+            await db.execute(text("SELECT 1"))
     except Exception:
         db_status = "unhealthy"
         logger.warning("health_check_db_failed")

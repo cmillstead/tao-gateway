@@ -59,15 +59,24 @@ async def create_api_key(
 
 
 async def list_api_keys(
-    org_id: uuid.UUID, db: AsyncSession, *, limit: int = 50, offset: int = 0
+    org_id: uuid.UUID,
+    db: AsyncSession,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    include_revoked: bool = False,
 ) -> tuple[list[ApiKey], int]:
     """List API keys for an organization with pagination. Returns (keys, total_count)."""
+    base_filter = [ApiKey.org_id == org_id]
+    if not include_revoked:
+        base_filter.append(ApiKey.is_active == True)  # noqa: E712
+
     total = await db.scalar(
-        select(func.count()).select_from(ApiKey).where(ApiKey.org_id == org_id)
+        select(func.count()).select_from(ApiKey).where(*base_filter)
     ) or 0
     result = await db.scalars(
         select(ApiKey)
-        .where(ApiKey.org_id == org_id)
+        .where(*base_filter)
         .order_by(ApiKey.created_at.desc())
         .limit(limit)
         .offset(offset)

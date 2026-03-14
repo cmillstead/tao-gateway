@@ -37,7 +37,19 @@ async def test_miner_uid_omitted_from_response():
 
     body = json.loads(response.body)
     assert "miner_uid" not in body["error"]
+    assert "def67890" not in body["error"]["message"]
     assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_miner_uid_not_leaked_in_timeout_message():
+    """MinerTimeoutError message must not contain miner_uid (SEC-018)."""
+    exc = MinerTimeoutError(miner_uid="abc12345", subnet="sn1")
+    response = await gateway_exception_handler(_fake_request(), exc)
+
+    body = json.loads(response.body)
+    assert "abc12345" not in body["error"]["message"]
+    assert "miner_uid" not in body["error"]
 
 
 @pytest.mark.asyncio

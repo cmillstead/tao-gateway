@@ -12,7 +12,7 @@ class GatewayError(Exception):
 
 class MinerTimeoutError(GatewayError):
     def __init__(self, miner_uid: str, subnet: str) -> None:
-        super().__init__(f"Miner {miner_uid} timed out on {subnet}", 504, "gateway_timeout")
+        super().__init__(f"Miner timed out on {subnet}", 504, "gateway_timeout")
         self.miner_uid = miner_uid
         self.subnet = subnet
 
@@ -20,7 +20,7 @@ class MinerTimeoutError(GatewayError):
 class MinerInvalidResponseError(GatewayError):
     def __init__(self, miner_uid: str, subnet: str) -> None:
         super().__init__(
-            f"Miner {miner_uid} returned invalid response on {subnet}",
+            f"Invalid response from miner on {subnet}",
             502,
             "bad_gateway",
         )

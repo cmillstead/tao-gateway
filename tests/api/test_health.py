@@ -30,30 +30,27 @@ async def test_redoc_accessible(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_health_degraded_when_db_down(client: AsyncClient) -> None:
     """Health endpoint returns 503 with degraded status when DB is down."""
-    from unittest.mock import AsyncMock
+    from unittest.mock import AsyncMock, patch
 
     from gateway.api.health import clear_health_cache
 
     clear_health_cache()
 
-    from gateway.core.database import get_db
-    from gateway.main import app
-
     mock_session = AsyncMock()
     mock_session.execute.side_effect = ConnectionError("DB down")
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    async def _broken_db():  # type: ignore[no-untyped-def]
-        yield mock_session
+    mock_factory = lambda: mock_session  # noqa: E731
 
-    app.dependency_overrides[get_db] = _broken_db
-    try:
-        response = await client.get("/v1/health")
-        data = response.json()
-        assert response.status_code == 503
-        assert data["status"] == "degraded"
-    finally:
-        app.dependency_overrides.pop(get_db, None)
-        clear_health_cache()
+    with patch("gateway.api.health.get_session_factory", return_value=mock_factory):
+        try:
+            response = await client.get("/v1/health")
+            data = response.json()
+            assert response.status_code == 503
+            assert data["status"] == "degraded"
+        finally:
+            clear_health_cache()
 
 
 @pytest.mark.asyncio
