@@ -5,6 +5,7 @@ from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -16,7 +17,11 @@ from gateway.core.database import get_engine
 from gateway.core.exceptions import GatewayError
 from gateway.core.logging import setup_logging
 from gateway.core.redis import close_redis, get_redis
-from gateway.middleware.error_handler import gateway_exception_handler
+from gateway.middleware.error_handler import (
+    gateway_exception_handler,
+    internal_exception_handler,
+    validation_exception_handler,
+)
 from gateway.routing.metagraph_sync import MetagraphManager
 from gateway.routing.selector import MinerSelector
 from gateway.subnets import ADAPTER_DEFINITIONS
@@ -221,4 +226,6 @@ async def limit_request_body_size(request: Request, call_next):  # type: ignore[
 
 
 app.add_exception_handler(GatewayError, gateway_exception_handler)  # type: ignore[arg-type]
+app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+app.add_exception_handler(Exception, internal_exception_handler)
 app.include_router(router)

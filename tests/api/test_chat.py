@@ -167,7 +167,7 @@ async def test_chat_completion_504_miner_timeout(
     assert response.status_code == 504
     data = response.json()
     assert data["error"]["type"] == "gateway_timeout"
-    assert "miner_uid" not in data["error"]  # SEC-018: omitted from client responses
+    assert "miner_uid" in data["error"]  # 502/504 include miner_uid (Story 3.2)
 
 
 @pytest.mark.asyncio
@@ -193,6 +193,7 @@ async def test_chat_completion_502_invalid_miner_response(
     assert response.status_code == 502
     data = response.json()
     assert data["error"]["type"] == "bad_gateway"
+    assert "miner_uid" in data["error"]  # 502/504 include miner_uid (Story 3.2)
 
 
 @pytest.mark.asyncio
