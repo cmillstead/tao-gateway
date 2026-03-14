@@ -332,3 +332,55 @@ def test_validation_handler_registered():
 
     assert RequestValidationError in real_app.exception_handlers
     assert real_app.exception_handlers[RequestValidationError] is validation_exception_handler
+
+
+# ---------------------------------------------------------------------------
+# Exception message sanitization (Story 3.3, Task 1.5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_catch_all_sanitizes_db_url_in_exception(capsys):
+    """internal_exception_handler sanitizes DB URLs from exception messages before logging."""
+    from gateway.middleware.error_handler import internal_exception_handler
+
+    exc = RuntimeError(
+        "Connection failed: postgresql+asyncpg://admin:s3cret_pass@db-host:5432/mydb"
+    )
+    await internal_exception_handler(_fake_request(), exc)
+    captured = capsys.readouterr()
+    assert "s3cret_pass" not in captured.out
+    assert "s3cret_pass" not in captured.err
+
+
+@pytest.mark.asyncio
+async def test_catch_all_sanitizes_api_key_in_exception(capsys):
+    """internal_exception_handler sanitizes API key patterns from exception messages."""
+    from gateway.middleware.error_handler import internal_exception_handler
+
+    exc = ValueError("Key lookup failed for tao_sk_live_abc123def456xyz789")
+    await internal_exception_handler(_fake_request(), exc)
+    captured = capsys.readouterr()
+    assert "abc123def456xyz789" not in captured.out
+    assert "abc123def456xyz789" not in captured.err
+
+
+@pytest.mark.asyncio
+async def test_log_sanitization_integration(client: AsyncClient, capsys):
+    """Full-stack: trigger an unhandled exception path and verify log output is sanitized.
+
+    Sends a request that goes through the full middleware stack. While we can't
+    easily trigger an unhandled exception through a real endpoint, we verify that
+    the structlog pipeline processes all log output through the redaction processor
+    by checking that a normal request's log output contains no sensitive patterns.
+    """
+    # Make a real request through the full stack — triggers auth logging
+    await client.post(
+        "/v1/chat/completions",
+        json={"model": "tao-gpt", "messages": [{"role": "user", "content": "hi"}]},
+        headers={"Authorization": "Bearer tao_sk_live_abc123def456xyz789extra"},
+    )
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    # The full API key must never appear in log output
+    assert "abc123def456xyz789extra" not in combined

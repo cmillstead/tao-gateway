@@ -22,6 +22,7 @@ from gateway.middleware.error_handler import (
     internal_exception_handler,
     validation_exception_handler,
 )
+from gateway.middleware.security_headers import SecurityHeadersMiddleware
 from gateway.routing.metagraph_sync import MetagraphManager
 from gateway.routing.selector import MinerSelector
 from gateway.subnets import ADAPTER_DEFINITIONS
@@ -145,6 +146,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 _MAX_BODY_SIZE = 1_000_000  # 1 MB
 

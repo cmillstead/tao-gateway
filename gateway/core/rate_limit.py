@@ -113,7 +113,7 @@ async def check_rate_limit(
         raw_result = await _lua_script(keys=[key], args=[window_seconds])
         return int(raw_result)
     except Exception:
-        logger.warning(f"{log_prefix}_redis_unavailable")
+        logger.warning("rate_limit_redis_unavailable", source=log_prefix)
         await reset_redis()
         # In-memory fallback
         if not _fallback_store.check(key, fallback_limit, fallback_window):

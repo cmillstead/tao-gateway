@@ -3,7 +3,7 @@ from functools import lru_cache
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 _INSECURE_DEFAULT_SECRET = "change-me-in-production"
@@ -20,10 +20,12 @@ def _get_app_version() -> str:
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql+asyncpg://tao:tao@localhost:5432/tao_gateway"
+    database_url: str = Field(
+        default="postgresql+asyncpg://tao:tao@localhost:5432/tao_gateway", repr=False
+    )
 
     # Redis
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = Field(default="redis://localhost:6379/0", repr=False)
 
     # Pool sizes
     db_pool_size: int = 20
@@ -36,7 +38,7 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # Auth
-    jwt_secret_key: str = _INSECURE_DEFAULT_SECRET
+    jwt_secret_key: str = Field(default=_INSECURE_DEFAULT_SECRET, repr=False)
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 30
     auth_rate_limit_per_minute: int = 30
