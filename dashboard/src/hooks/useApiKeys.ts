@@ -1,11 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchJson } from "@/lib/api";
-import type {
-  ApiKeyCreateRequest,
-  ApiKeyCreateResponse,
-  ApiKeyListResponse,
-  ApiKeyRotateResponse,
-} from "@/types";
+import client from "@/api/client";
+import { extractErrorMessage } from "@/api/errors";
+import type { ApiKeyCreateRequest } from "@/types";
 
 const API_KEYS_QUERY_KEY = ["api-keys"];
 
@@ -16,10 +12,17 @@ export function useApiKeys(params?: { limit?: number; offset?: number; includeRe
 
   return useQuery({
     queryKey: [...API_KEYS_QUERY_KEY, { limit, offset, includeRevoked }],
-    queryFn: () =>
-      fetchJson<ApiKeyListResponse>(
-        `/dashboard/api-keys?limit=${limit}&offset=${offset}&include_revoked=${includeRevoked}`,
-      ),
+    queryFn: async () => {
+      const { data, error } = await client.GET("/dashboard/api-keys", {
+        params: {
+          query: { limit, offset, include_revoked: includeRevoked },
+        },
+      });
+      if (error) {
+        throw new Error(extractErrorMessage(error, "Failed to load API keys"));
+      }
+      return data;
+    },
   });
 }
 
@@ -27,12 +30,15 @@ export function useCreateApiKey() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (req: ApiKeyCreateRequest) =>
-      fetchJson<ApiKeyCreateResponse>("/dashboard/api-keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req),
-      }),
+    mutationFn: async (req: ApiKeyCreateRequest) => {
+      const { data, error } = await client.POST("/dashboard/api-keys", {
+        body: req,
+      });
+      if (error) {
+        throw new Error(extractErrorMessage(error, "Failed to create API key"));
+      }
+      return data;
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY });
     },
@@ -43,10 +49,15 @@ export function useRotateApiKey() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (keyId: string) =>
-      fetchJson<ApiKeyRotateResponse>(`/dashboard/api-keys/rotate/${keyId}`, {
-        method: "POST",
-      }),
+    mutationFn: async (keyId: string) => {
+      const { data, error } = await client.POST("/dashboard/api-keys/rotate/{key_id}", {
+        params: { path: { key_id: keyId } },
+      });
+      if (error) {
+        throw new Error(extractErrorMessage(error, "Failed to rotate API key"));
+      }
+      return data;
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY });
     },
@@ -57,10 +68,15 @@ export function useRevokeApiKey() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (keyId: string) =>
-      fetchJson<{ message: string }>(`/dashboard/api-keys/${keyId}`, {
-        method: "DELETE",
-      }),
+    mutationFn: async (keyId: string) => {
+      const { data, error } = await client.DELETE("/dashboard/api-keys/{key_id}", {
+        params: { path: { key_id: keyId } },
+      });
+      if (error) {
+        throw new Error(extractErrorMessage(error, "Failed to revoke API key"));
+      }
+      return data;
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY });
     },
