@@ -1,11 +1,15 @@
 import ipaddress
 import random
+from typing import TYPE_CHECKING
 
 import bittensor as bt
 import structlog
 
 from gateway.core.exceptions import SubnetUnavailableError
 from gateway.routing.metagraph_sync import MetagraphManager, SubnetMetagraphState
+
+if TYPE_CHECKING:
+    from gateway.routing.scorer import MinerScorer
 
 logger = structlog.get_logger()
 
@@ -26,8 +30,15 @@ class MinerSelector:
     object changes (new sync replaces the reference).
     """
 
-    def __init__(self, metagraph_manager: MetagraphManager) -> None:
+    def __init__(
+        self,
+        metagraph_manager: MetagraphManager,
+        scorer: "MinerScorer | None" = None,
+        quality_weight: float = 0.3,
+    ) -> None:
         self._metagraph_manager = metagraph_manager
+        self._scorer = scorer
+        self._quality_weight = quality_weight
         # Cache: netuid -> (sync_generation, sorted_eligible_list)
         self._cache: dict[int, tuple[int, list[tuple[int, float, bt.AxonInfo]]]] = {}
 
@@ -82,7 +93,20 @@ class MinerSelector:
         if not eligible:
             raise SubnetUnavailableError(f"sn{netuid}", reason="no_eligible_miners")
 
-        weights = [e[1] for e in eligible]
+        # Blend incentive with quality scores if scorer is available
+        quality_scores: dict[str, float] = {}
+        if self._scorer is not None and self._quality_weight > 0:
+            quality_scores = self._scorer.get_scores(netuid)
+
+        weights: list[float] = []
+        for _uid, incentive, axon_info in eligible:
+            q_score = quality_scores.get(axon_info.hotkey)
+            if q_score is not None and self._quality_weight > 0:
+                blended = incentive * (1 - self._quality_weight) + q_score * self._quality_weight
+            else:
+                blended = incentive
+            weights.append(max(blended, 1e-9))  # Avoid zero weights
+
         (selected,) = random.choices(eligible, weights=weights, k=1)
         sel_uid, sel_incentive, sel_axon = selected
 

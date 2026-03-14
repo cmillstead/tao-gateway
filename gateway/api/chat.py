@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from fastapi import APIRouter, Depends, Request
@@ -39,10 +39,16 @@ async def create_chat_completion(
     dendrite = request.app.state.dendrite
     miner_selector = request.app.state.miner_selector
 
-    if body.stream:
-        return await _handle_stream(body, request, adapter, dendrite, miner_selector, rate_result)
+    scorer = getattr(request.app.state, "scorer", None)
 
-    return await _handle_non_stream(body, adapter, dendrite, miner_selector, rate_result)
+    if body.stream:
+        return await _handle_stream(
+            body, request, adapter, dendrite, miner_selector, rate_result, scorer,
+        )
+
+    return await _handle_non_stream(
+        body, adapter, dendrite, miner_selector, rate_result, scorer,
+    )
 
 
 async def _handle_stream(
@@ -52,6 +58,7 @@ async def _handle_stream(
     dendrite: bt.Dendrite,
     miner_selector: MinerSelector,
     rate_result: RateLimitResult,
+    scorer: Any = None,
 ) -> StreamingResponse:
     """Handle streaming chat completion request."""
     logger.info(
@@ -65,6 +72,7 @@ async def _handle_stream(
         dendrite=dendrite,
         miner_selector=miner_selector,
         is_disconnected=request.is_disconnected,
+        scorer=scorer,
     )
     miner_uid = headers["X-TaoGateway-Miner-UID"]
 
@@ -114,6 +122,7 @@ async def _handle_non_stream(
     dendrite: bt.Dendrite,
     miner_selector: MinerSelector,
     rate_result: RateLimitResult,
+    scorer: Any = None,
 ) -> JSONResponse:
     """Handle non-streaming chat completion request."""
     logger.info(
@@ -127,6 +136,7 @@ async def _handle_non_stream(
             request_data=body.model_dump(),
             dendrite=dendrite,
             miner_selector=miner_selector,
+            scorer=scorer,
         )
     except GatewayError as exc:
         logger.warning(
