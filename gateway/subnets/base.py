@@ -134,9 +134,16 @@ class BaseAdapter(ABC):
                 miner_uid=miner_uid, subnet=config.subnet_name
             )
 
-        # 5. Convert and sanitize
-        response_data = self.from_response(response_synapse, request_data)
-        response_data = self.sanitize_output(response_data)
+        # 5. Convert and sanitize — re-raise with actual miner_uid
+        try:
+            response_data = self.from_response(response_synapse, request_data)
+            response_data = self.sanitize_output(response_data)
+        except MinerInvalidResponseError as exc:
+            if exc.miner_uid == "unknown":
+                raise MinerInvalidResponseError(
+                    miner_uid=miner_uid, subnet=config.subnet_name
+                ) from exc
+            raise
 
         elapsed_ms = round((time.monotonic() - start_time) * 1000)
 

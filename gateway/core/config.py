@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     # Rate limiting
     trusted_proxies: list[str] = []
     chat_rate_limit_per_minute: int = 60
+    images_rate_limit_per_minute: int = 30
 
     # CORS
     allowed_origins: list[str] = []
@@ -54,8 +55,10 @@ class Settings(BaseSettings):
     hotkey_name: str = "default"
     subtensor_network: str = "finney"
     sn1_netuid: int = 1
+    sn19_netuid: int = 19
     metagraph_sync_interval_seconds: int = 120
     dendrite_timeout_seconds: int = 30
+    sn19_timeout_seconds: int = 90
     enable_bittensor: bool = True
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

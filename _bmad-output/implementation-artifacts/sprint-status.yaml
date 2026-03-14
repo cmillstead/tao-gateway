@@ -41,17 +41,17 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Gateway Foundation & Text Generation
-  epic-1: in-progress
+  epic-1: done
   1-1-project-scaffold-and-health-endpoint: done
   1-2-developer-account-and-api-key-creation: done
   1-3-bittensor-integration-and-miner-selection: done
   1-4-sn1-text-generation-endpoint: done
-  1-5-streaming-responses-and-request-cancellation: review
+  1-5-streaming-responses-and-request-cancellation: done
   epic-1-retrospective: optional
 
   # Epic 2: Multi-Subnet Expansion
-  epic-2: backlog
-  2-1-sn19-image-generation-endpoint: backlog
+  epic-2: in-progress
+  2-1-sn19-image-generation-endpoint: done
   2-2-sn62-code-generation-endpoint: backlog
   2-3-subnet-discovery-and-health: backlog
   2-4-adapter-registry-and-extensibility: backlog
