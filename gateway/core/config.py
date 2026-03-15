@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     usage_aggregation_interval_seconds: int = Field(default=86400, ge=1)
     usage_retention_days: int = Field(default=90, ge=1)
 
+    # Debug log cleanup
+    debug_log_cleanup_interval_seconds: int = Field(default=3600, ge=1)
+    debug_log_retention_hours: int = Field(default=48, ge=1)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @model_validator(mode="after")

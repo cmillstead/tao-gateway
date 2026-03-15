@@ -82,3 +82,23 @@ export function useRevokeApiKey() {
     },
   });
 }
+
+export function useUpdateApiKey() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ keyId, debugMode }: { keyId: string; debugMode: boolean }) => {
+      const { data, error } = await client.PATCH("/dashboard/api-keys/{key_id}", {
+        params: { path: { key_id: keyId } },
+        body: { debug_mode: debugMode },
+      });
+      if (error) {
+        throw new Error(extractErrorMessage(error, "Failed to update API key"));
+      }
+      return data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY });
+    },
+  });
+}

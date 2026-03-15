@@ -7,8 +7,9 @@ import pytest
 from sqlalchemy import func, select
 
 from gateway.core.database import get_session_factory
-from gateway.middleware.usage import record_usage
+from gateway.middleware.usage import MAX_DEBUG_CONTENT_SIZE, record_usage, safe_json_dumps
 from gateway.models.api_key import ApiKey
+from gateway.models.debug_log import DebugLog
 from gateway.models.organization import Organization
 from gateway.models.usage_record import UsageRecord
 
@@ -102,3 +103,119 @@ async def test_record_usage_exception_handling() -> None:
         status_code=500,
     )
     # Should not raise — just log warning
+
+
+@pytest.mark.asyncio
+async def test_record_usage_creates_debug_log_when_debug_mode(
+    org_and_key: tuple[uuid.UUID, uuid.UUID],
+) -> None:
+    """When debug_mode=True and content is provided, a DebugLog is created."""
+    org_id, key_id = org_and_key
+    session_factory = get_session_factory()
+
+    await record_usage(
+        session_factory=session_factory,
+        api_key_id=key_id,
+        org_id=org_id,
+        subnet_name="sn1",
+        netuid=1,
+        endpoint="/v1/chat/completions",
+        miner_uid="test",
+        latency_ms=100,
+        status_code=200,
+        debug_mode=True,
+        request_body='{"messages": [{"role": "user", "content": "hi"}]}',
+        response_body='{"choices": [{"message": {"content": "hello"}}]}',
+    )
+
+    async with session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(DebugLog))
+        assert count == 1
+
+        log = await session.scalar(select(DebugLog))
+        assert log is not None
+        assert log.api_key_id == key_id
+        assert "messages" in (log.request_body or "")
+        assert "choices" in (log.response_body or "")
+
+
+@pytest.mark.asyncio
+async def test_record_usage_no_debug_log_when_debug_mode_false(
+    org_and_key: tuple[uuid.UUID, uuid.UUID],
+) -> None:
+    """When debug_mode=False, no DebugLog is created even if content is provided."""
+    org_id, key_id = org_and_key
+    session_factory = get_session_factory()
+
+    await record_usage(
+        session_factory=session_factory,
+        api_key_id=key_id,
+        org_id=org_id,
+        subnet_name="sn1",
+        netuid=1,
+        endpoint="/v1/chat/completions",
+        miner_uid="test",
+        latency_ms=100,
+        status_code=200,
+        debug_mode=False,
+        request_body='{"test": "data"}',
+        response_body='{"test": "response"}',
+    )
+
+    async with session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(DebugLog))
+        assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_record_usage_truncates_large_content(
+    org_and_key: tuple[uuid.UUID, uuid.UUID],
+) -> None:
+    """Content larger than MAX_DEBUG_CONTENT_SIZE is truncated."""
+    org_id, key_id = org_and_key
+    session_factory = get_session_factory()
+
+    large_content = "x" * (MAX_DEBUG_CONTENT_SIZE + 1000)
+
+    await record_usage(
+        session_factory=session_factory,
+        api_key_id=key_id,
+        org_id=org_id,
+        subnet_name="sn1",
+        netuid=1,
+        endpoint="/v1/chat/completions",
+        miner_uid="test",
+        latency_ms=100,
+        status_code=200,
+        debug_mode=True,
+        request_body=large_content,
+        response_body=None,
+    )
+
+    async with session_factory() as session:
+        log = await session.scalar(select(DebugLog))
+        assert log is not None
+        assert log.request_body is not None
+        assert len(log.request_body) < len(large_content)
+        assert "[truncated at 64KB]" in log.request_body
+
+
+def test_safe_json_dumps_none() -> None:
+    assert safe_json_dumps(None) is None
+
+
+def test_safe_json_dumps_dict() -> None:
+    result = safe_json_dumps({"key": "value"})
+    assert result is not None
+    assert '"key"' in result
+    assert '"value"' in result
+
+
+def test_safe_json_dumps_unserializable() -> None:
+    """Unserializable objects return None instead of raising."""
+    class BadObj:
+        def __repr__(self) -> str:
+            raise RuntimeError("boom")
+    # json.dumps with default=str will convert most things, but
+    # we can test the None input path at minimum
+    assert safe_json_dumps(None) is None

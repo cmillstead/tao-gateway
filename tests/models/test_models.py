@@ -24,7 +24,7 @@ def test_api_key_columns() -> None:
     columns = {c.name for c in ApiKey.__table__.columns}
     expected = {
         "id", "org_id", "name", "prefix", "key_hash",
-        "is_active", "created_at", "updated_at",
+        "is_active", "debug_mode", "created_at", "updated_at",
     }
     assert columns == expected
 

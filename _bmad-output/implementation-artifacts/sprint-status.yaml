@@ -78,7 +78,7 @@ development_status:
   epic-5: in-progress
   5-1-usage-metering-and-storage: done
   5-2-usage-dashboard-and-quota-display: done
-  5-3-debug-mode-and-content-cleanup: backlog
+  5-3-debug-mode-and-content-cleanup: done
   epic-5-retrospective: optional
 
   # Epic 6: Operator Administration

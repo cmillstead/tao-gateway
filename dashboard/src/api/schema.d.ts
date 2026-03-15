@@ -170,23 +170,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/dashboard/api-keys/rotate/{key_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rotate Api Key */
-        post: operations["rotate_api_key_dashboard_api_keys_rotate__key_id__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/dashboard/api-keys/{key_id}": {
         parameters: {
             query?: never;
@@ -199,6 +182,41 @@ export interface paths {
         post?: never;
         /** Revoke Api Key */
         delete: operations["revoke_api_key_dashboard_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Api Key */
+        patch: operations["update_api_key_dashboard_api_keys__key_id__patch"];
+        trace?: never;
+    };
+    "/dashboard/api-keys/{key_id}/debug-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Debug Logs */
+        get: operations["get_debug_logs_dashboard_api_keys__key_id__debug_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard/api-keys/rotate/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate Api Key */
+        post: operations["rotate_api_key_dashboard_api_keys_rotate__key_id__post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -356,6 +374,8 @@ export interface components {
             name: string | null;
             /** Is Active */
             is_active: boolean;
+            /** Debug Mode */
+            debug_mode: boolean;
             /**
              * Created At
              * Format: date-time
@@ -379,6 +399,11 @@ export interface components {
             new_key: components["schemas"]["ApiKeyCreateResponse"];
             /** Revoked Key Id */
             revoked_key_id: string;
+        };
+        /** ApiKeyUpdateRequest */
+        ApiKeyUpdateRequest: {
+            /** Debug Mode */
+            debug_mode?: boolean | null;
         };
         /** ChatCompletionRequest */
         ChatCompletionRequest: {
@@ -441,6 +466,29 @@ export interface components {
             granularity: string;
             /** Subnets */
             subnets?: components["schemas"]["SubnetUsageWithQuota"][];
+        };
+        /** DebugLogEntry */
+        DebugLogEntry: {
+            /** Id */
+            id: string;
+            /** Usage Record Id */
+            usage_record_id: string;
+            /** Request Body */
+            request_body: string | null;
+            /** Response Body */
+            response_body: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** DebugLogListResponse */
+        DebugLogListResponse: {
+            /** Items */
+            items: components["schemas"]["DebugLogEntry"][];
+            /** Total */
+            total: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -944,37 +992,6 @@ export interface operations {
             };
         };
     };
-    rotate_api_key_dashboard_api_keys_rotate__key_id__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                key_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiKeyRotateResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     revoke_api_key_dashboard_api_keys__key_id__delete: {
         parameters: {
             query?: never;
@@ -993,6 +1010,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiKeyRevokeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_api_key_dashboard_api_keys__key_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyListItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_debug_logs_dashboard_api_keys__key_id__debug_logs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebugLogListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_api_key_dashboard_api_keys_rotate__key_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRotateResponse"];
                 };
             };
             /** @description Validation Error */

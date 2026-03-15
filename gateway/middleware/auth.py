@@ -26,6 +26,7 @@ class ApiKeyInfo:
 
     key_id: uuid.UUID
     org_id: uuid.UUID
+    debug_mode: bool = False
 
 
 async def get_current_api_key(
@@ -75,12 +76,21 @@ async def get_current_api_key(
                 await redis.delete(cache_key)
                 cached_str = None
 
-            # Cache stores key_hash:key_id:org_id — always verify hash even on hit
+            # Cache stores key_hash:key_id:org_id:debug_mode — always verify hash even on hit
             if cached_str is not None:
                 try:
-                    cached_hash, key_id_str, org_id_str = cached_str.split(":", 2)
-                    ph.verify(cached_hash, token)
-                    return ApiKeyInfo(key_id=uuid.UUID(key_id_str), org_id=uuid.UUID(org_id_str))
+                    parts = cached_str.split(":")
+                    if len(parts) >= 3:
+                        cached_hash = parts[0]
+                        key_id_str = parts[1]
+                        org_id_str = parts[2]
+                        debug_mode = parts[3] == "1" if len(parts) > 3 else False
+                        ph.verify(cached_hash, token)
+                        return ApiKeyInfo(
+                            key_id=uuid.UUID(key_id_str),
+                            org_id=uuid.UUID(org_id_str),
+                            debug_mode=debug_mode,
+                        )
                 except VerifyMismatchError as exc:
                     logger.warning("api_key_hash_mismatch", prefix=redacted)
                     raise AuthenticationError("Invalid API key") from exc
@@ -111,14 +121,19 @@ async def get_current_api_key(
     current_hash = key_record.key_hash  # may have been updated by rehash
 
     # Best-effort cache population
+    debug_flag = "1" if key_record.debug_mode else "0"
     if redis is not None:
-        cache_value = f"{current_hash}:{key_record.id}:{key_record.org_id}"
+        cache_value = f"{current_hash}:{key_record.id}:{key_record.org_id}:{debug_flag}"
         try:
             await redis.set(cache_key, cache_value, ex=API_KEY_CACHE_TTL)
         except Exception:
             logger.warning("redis_set_failed", prefix=redacted)
 
-    return ApiKeyInfo(key_id=key_record.id, org_id=key_record.org_id)
+    return ApiKeyInfo(
+        key_id=key_record.id,
+        org_id=key_record.org_id,
+        debug_mode=key_record.debug_mode,
+    )
 
 
 async def get_current_org_id(

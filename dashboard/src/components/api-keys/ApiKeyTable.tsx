@@ -9,11 +9,14 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ApiKeyDisplay } from "./ApiKeyDisplay";
 import { RotateKeyDialog } from "./RotateKeyDialog";
 import { RevokeKeyDialog } from "./RevokeKeyDialog";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { DebugLogViewer } from "./DebugLogViewer";
+import { useUpdateApiKey } from "@/hooks/useApiKeys";
+import { RefreshCw, Trash2, FileText } from "lucide-react";
 import type { ApiKey } from "@/types";
 
 function formatDate(dateStr: string): string {
@@ -48,6 +51,8 @@ interface ApiKeyTableProps {
 export function ApiKeyTable({ keys, onCreateClick }: ApiKeyTableProps) {
   const [rotateTarget, setRotateTarget] = useState<ApiKey | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiKey | null>(null);
+  const [debugLogsTarget, setDebugLogsTarget] = useState<ApiKey | null>(null);
+  const updateApiKey = useUpdateApiKey();
 
   if (keys.length === 0) {
     return (
@@ -57,13 +62,14 @@ export function ApiKeyTable({ keys, onCreateClick }: ApiKeyTableProps) {
             <TableHead>Name</TableHead>
             <TableHead>Key</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Debug</TableHead>
             <TableHead>Created</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           <TableRow>
-            <TableCell colSpan={5} className="py-12 text-center">
+            <TableCell colSpan={6} className="py-12 text-center">
               <p className="text-muted-foreground">
                 No API keys yet. Create one to get started.
               </p>
@@ -85,6 +91,7 @@ export function ApiKeyTable({ keys, onCreateClick }: ApiKeyTableProps) {
             <TableHead>Name</TableHead>
             <TableHead>Key</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Debug</TableHead>
             <TableHead>Created</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
@@ -111,12 +118,44 @@ export function ApiKeyTable({ keys, onCreateClick }: ApiKeyTableProps) {
                   </Badge>
                 )}
               </TableCell>
+              <TableCell>
+                {key.is_active ? (
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={key.debug_mode}
+                      onCheckedChange={(checked) =>
+                        updateApiKey.mutate({ keyId: key.id, debugMode: checked })
+                      }
+                      disabled={updateApiKey.isPending}
+                      aria-label={`${key.debug_mode ? "Disable" : "Enable"} debug mode for ${key.name ?? key.prefix}`}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {key.debug_mode ? "On" : "Off"}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </TableCell>
               <TableCell className="text-muted-foreground">
                 {formatDate(key.created_at)}
               </TableCell>
               <TableCell className="text-right">
                 {key.is_active && (
                   <span className="inline-flex gap-1">
+                    {key.debug_mode && (
+                      <Tooltip content="View debug logs">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setDebugLogsTarget(key)}
+                          aria-label="View debug logs"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                      </Tooltip>
+                    )}
                     <Tooltip content="Rotate">
                       <Button
                         variant="ghost"
@@ -162,6 +201,15 @@ export function ApiKeyTable({ keys, onCreateClick }: ApiKeyTableProps) {
           onOpenChange={(open) => !open && setRevokeTarget(null)}
           keyId={revokeTarget.id}
           keyPrefix={revokeTarget.prefix}
+        />
+      )}
+
+      {debugLogsTarget && (
+        <DebugLogViewer
+          open={!!debugLogsTarget}
+          onOpenChange={(open) => !open && setDebugLogsTarget(null)}
+          keyId={debugLogsTarget.id}
+          keyPrefix={debugLogsTarget.prefix}
         />
       )}
     </>

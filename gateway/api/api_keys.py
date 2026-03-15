@@ -16,6 +16,9 @@ from gateway.schemas.api_keys import (
     ApiKeyListResponse,
     ApiKeyRevokeResponse,
     ApiKeyRotateResponse,
+    ApiKeyUpdateRequest,
+    DebugLogEntry,
+    DebugLogListResponse,
 )
 from gateway.services import api_key_service
 
@@ -61,9 +64,68 @@ async def list_api_keys(
                 prefix=k.prefix,
                 name=k.name,
                 is_active=k.is_active,
+                debug_mode=k.debug_mode,
                 created_at=k.created_at,
             )
             for k in keys
+        ],
+        total=total,
+    )
+
+
+@router.patch("/api-keys/{key_id}", response_model=ApiKeyListItem)
+async def update_api_key(
+    key_id: uuid.UUID,
+    body: ApiKeyUpdateRequest,
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+) -> ApiKeyListItem:
+    try:
+        redis = await get_redis()
+    except Exception:
+        redis = None
+    key = await api_key_service.update_api_key(
+        key_id, org_id, db, redis, debug_mode=body.debug_mode,
+    )
+    if key is None:
+        raise GatewayError("API key not found", status_code=404, error_type="not_found")
+    logger.info(
+        "api_key_updated",
+        org_id=str(org_id),
+        key_id=str(key_id),
+        debug_mode=key.debug_mode,
+    )
+    return ApiKeyListItem(
+        id=str(key.id),
+        prefix=key.prefix,
+        name=key.name,
+        is_active=key.is_active,
+        debug_mode=key.debug_mode,
+        created_at=key.created_at,
+    )
+
+
+@router.get("/api-keys/{key_id}/debug-logs", response_model=DebugLogListResponse)
+async def get_debug_logs(
+    key_id: uuid.UUID,
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> DebugLogListResponse:
+    logs, total = await api_key_service.get_debug_logs(
+        key_id, org_id, db, limit=limit, offset=offset,
+    )
+    return DebugLogListResponse(
+        items=[
+            DebugLogEntry(
+                id=str(log.id),
+                usage_record_id=str(log.usage_record_id),
+                request_body=log.request_body,
+                response_body=log.response_body,
+                created_at=log.created_at,
+            )
+            for log in logs
         ],
         total=total,
     )

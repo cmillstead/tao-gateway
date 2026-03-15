@@ -445,3 +445,186 @@ async def test_create_api_key_rejects_when_limit_reached(client: AsyncClient) ->
         )
         assert resp.status_code == 422
         assert "Maximum" in resp.json()["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_includes_debug_mode(client: AsyncClient) -> None:
+    """List response includes the debug_mode field, defaults to false."""
+    token = await _signup_and_get_jwt(client, "debuglist@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    resp = await client.get("/dashboard/api-keys", headers=headers)
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) >= 1
+    assert items[0]["debug_mode"] is False
+
+
+@pytest.mark.asyncio
+async def test_patch_api_key_toggle_debug_mode(client: AsyncClient) -> None:
+    """PATCH /dashboard/api-keys/{key_id} toggles debug_mode."""
+    token = await _signup_and_get_jwt(client, "debugtoggle@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    key_id = create_resp.json()["id"]
+
+    # Enable debug mode
+    resp = await client.patch(
+        f"/dashboard/api-keys/{key_id}",
+        json={"debug_mode": True},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["debug_mode"] is True
+
+    # Disable debug mode
+    resp = await client.patch(
+        f"/dashboard/api-keys/{key_id}",
+        json={"debug_mode": False},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["debug_mode"] is False
+
+
+@pytest.mark.asyncio
+async def test_patch_api_key_other_org_returns_404(client: AsyncClient) -> None:
+    """Org A cannot toggle debug mode on org B's key."""
+    token_a = await _signup_and_get_jwt(client, "debug_org_a@example.com")
+    token_b = await _signup_and_get_jwt(client, "debug_org_b@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers_b,
+    )
+    key_id_b = create_resp.json()["id"]
+
+    resp = await client.patch(
+        f"/dashboard/api-keys/{key_id_b}",
+        json={"debug_mode": True},
+        headers=headers_a,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_debug_logs_empty(client: AsyncClient) -> None:
+    """GET /dashboard/api-keys/{key_id}/debug-logs returns empty list when no logs."""
+    token = await _signup_and_get_jwt(client, "debuglogs@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    key_id = create_resp.json()["id"]
+
+    resp = await client.get(
+        f"/dashboard/api-keys/{key_id}/debug-logs",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"] == []
+    assert data["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_debug_logs_returns_content(client: AsyncClient) -> None:
+    """Debug logs with content are returned correctly via the API."""
+    from sqlalchemy import select
+
+    from gateway.core.database import get_session_factory
+    from gateway.middleware.usage import record_usage
+    from gateway.models.api_key import ApiKey
+
+    token = await _signup_and_get_jwt(client, "debugcontent@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Create a key and enable debug mode
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers,
+    )
+    key_id = create_resp.json()["id"]
+    await client.patch(
+        f"/dashboard/api-keys/{key_id}",
+        json={"debug_mode": True},
+        headers=headers,
+    )
+
+    # Get the actual key record to find org_id
+    session_factory = get_session_factory()
+    import uuid
+    async with session_factory() as session:
+        key = await session.scalar(
+            select(ApiKey).where(ApiKey.id == uuid.UUID(key_id))
+        )
+        assert key is not None
+        org_id = key.org_id
+
+    # Create a debug log entry via record_usage
+    await record_usage(
+        session_factory=session_factory,
+        api_key_id=uuid.UUID(key_id),
+        org_id=org_id,
+        subnet_name="sn1",
+        netuid=1,
+        endpoint="/v1/chat/completions",
+        miner_uid="test-miner",
+        latency_ms=150,
+        status_code=200,
+        debug_mode=True,
+        request_body='{"messages": [{"role": "user", "content": "hello"}]}',
+        response_body='{"choices": [{"message": {"content": "hi"}}]}',
+    )
+
+    # Fetch debug logs and verify content
+    resp = await client.get(
+        f"/dashboard/api-keys/{key_id}/debug-logs",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    entry = data["items"][0]
+    assert "messages" in entry["request_body"]
+    assert "choices" in entry["response_body"]
+    assert "created_at" in entry
+    assert "id" in entry
+    assert "usage_record_id" in entry
+
+
+@pytest.mark.asyncio
+async def test_get_debug_logs_other_org_returns_404(client: AsyncClient) -> None:
+    """Org A cannot view debug logs for org B's key."""
+    token_a = await _signup_and_get_jwt(client, "dl_org_a@example.com")
+    token_b = await _signup_and_get_jwt(client, "dl_org_b@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    create_resp = await client.post(
+        "/dashboard/api-keys",
+        json={"environment": "live"},
+        headers=headers_b,
+    )
+    key_id_b = create_resp.json()["id"]
+
+    resp = await client.get(
+        f"/dashboard/api-keys/{key_id_b}/debug-logs",
+        headers=headers_a,
+    )
+    assert resp.status_code == 404
