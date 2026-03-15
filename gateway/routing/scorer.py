@@ -127,6 +127,32 @@ class MinerScorer:
                 if net == netuid
             }
 
+    def get_miner_details(self, netuid: int) -> list[MinerQualityScore]:
+        """Return current miner quality data for a subnet without resetting counters."""
+        with self._lock:
+            details = []
+            for (net, _hk), state in self._states.items():
+                if net != netuid:
+                    continue
+                avg_latency = (
+                    state.latency_sum_ms / state.total_requests
+                    if state.total_requests > 0
+                    else 0.0
+                )
+                details.append(
+                    MinerQualityScore(
+                        miner_uid=state.miner_uid,
+                        hotkey=state.hotkey,
+                        netuid=state.netuid,
+                        quality_score=state.quality_score,
+                        total_requests=state.total_requests,
+                        successful_requests=state.successful_requests,
+                        avg_latency_ms=avg_latency,
+                        last_updated=state.last_updated,
+                    )
+                )
+            return details
+
     def get_snapshot_and_reset(self) -> list[MinerQualityScore]:
         """Return current scores for DB flush and reset observation counters.
 

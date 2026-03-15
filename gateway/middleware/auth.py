@@ -9,10 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.database import get_db
-from gateway.core.exceptions import AuthenticationError
+from gateway.core.exceptions import AuthenticationError, AuthorizationError
 from gateway.core.redis import try_get_redis
 from gateway.core.security import ph, try_rehash
 from gateway.models.api_key import ApiKey
+from gateway.models.organization import Organization
 from gateway.services.api_key_service import API_KEY_CACHE_TTL, API_KEY_PREFIX_LENGTH
 from gateway.services.auth_service import verify_jwt_token
 
@@ -159,3 +160,16 @@ async def get_current_org_id(
         return uuid.UUID(org_id_str)
     except ValueError as exc:
         raise AuthenticationError("Invalid token") from exc
+
+
+async def require_admin(
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: AsyncSession = Depends(get_db),
+) -> uuid.UUID:
+    """Validate that the authenticated user is an admin."""
+    org = await db.scalar(
+        select(Organization).where(Organization.id == org_id)
+    )
+    if org is None or not org.is_admin:
+        raise AuthorizationError("Admin access required")
+    return org_id

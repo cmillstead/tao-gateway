@@ -198,3 +198,38 @@ class TestMinerScorer:
     def test_default_sample_rate_is_one(self) -> None:
         scorer = MinerScorer(ema_alpha=0.3)
         assert scorer.sample_rate == 1.0
+
+
+class TestGetMinerDetails:
+    def test_returns_details_for_netuid(self) -> None:
+        scorer = MinerScorer()
+        scorer.record_observation(_make_observation(netuid=1, hotkey="hk1", miner_uid=1))
+        scorer.record_observation(_make_observation(netuid=1, hotkey="hk2", miner_uid=2))
+        scorer.record_observation(_make_observation(netuid=19, hotkey="hk3", miner_uid=3))
+
+        details = scorer.get_miner_details(1)
+        assert len(details) == 2
+        uids = {d.miner_uid for d in details}
+        assert uids == {1, 2}
+
+    def test_returns_empty_for_unknown_netuid(self) -> None:
+        scorer = MinerScorer()
+        scorer.record_observation(_make_observation(netuid=1))
+        assert scorer.get_miner_details(999) == []
+
+    def test_does_not_reset_counters(self) -> None:
+        scorer = MinerScorer()
+        scorer.record_observation(_make_observation(netuid=1, hotkey="hk1"))
+        scorer.record_observation(_make_observation(netuid=1, hotkey="hk1"))
+
+        details_first = scorer.get_miner_details(1)
+        details_second = scorer.get_miner_details(1)
+        assert details_first[0].total_requests == details_second[0].total_requests == 2
+
+    def test_computes_avg_latency(self) -> None:
+        scorer = MinerScorer()
+        scorer.record_observation(_make_observation(netuid=1, hotkey="hk1", latency_ms=100.0))
+        scorer.record_observation(_make_observation(netuid=1, hotkey="hk1", latency_ms=200.0))
+
+        details = scorer.get_miner_details(1)
+        assert details[0].avg_latency_ms == 150.0

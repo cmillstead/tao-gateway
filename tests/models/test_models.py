@@ -17,7 +17,7 @@ def test_base_metadata_has_tables() -> None:
 
 def test_organization_columns() -> None:
     columns = {c.name for c in Organization.__table__.columns}
-    assert columns == {"id", "email", "password_hash", "created_at", "updated_at"}
+    assert columns == {"id", "email", "password_hash", "is_admin", "created_at", "updated_at"}
 
 
 def test_api_key_columns() -> None:

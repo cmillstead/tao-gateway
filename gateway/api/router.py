@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from gateway.api.admin import router as admin_router
 from gateway.api.api_keys import router as api_keys_router
 from gateway.api.auth import router as auth_router
 from gateway.api.chat import router as chat_router
@@ -20,3 +21,6 @@ router.include_router(usage_router, prefix="/v1", tags=["Usage"])
 router.include_router(chat_router, prefix="/v1", tags=["Chat Completions"])
 router.include_router(images_router, prefix="/v1", tags=["Image Generation"])
 router.include_router(code_router, prefix="/v1", tags=["Code Generation"])
+router.include_router(
+    admin_router, prefix="/admin", tags=["Admin"], include_in_schema=False
+)
