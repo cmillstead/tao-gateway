@@ -1,6 +1,8 @@
 """Tests for lifespan startup/shutdown behavior.
 
 Uses real Postgres and Redis (per CLAUDE.md). Only Bittensor SDK is mocked.
+Tests that exercise the Bittensor code path must override enable_bittensor=True
+since CI sets ENABLE_BITTENSOR=false.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,6 +10,30 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from gateway.subnets.registry import AdapterRegistry
+
+
+def _bt_settings_patch():
+    """Patch settings to enable Bittensor and provide all required config."""
+    mock = MagicMock()
+    mock.enable_bittensor = True
+    mock.app_version = "0.0.0-test"
+    mock.metagraph_sync_interval_seconds = 120
+    mock.dendrite_timeout_seconds = 30
+    mock.sn1_netuid = 1
+    mock.sn19_netuid = 19
+    mock.sn62_netuid = 62
+    mock.sn19_timeout_seconds = 90
+    mock.sn62_timeout_seconds = 30
+    mock.score_ema_alpha = 0.3
+    mock.quality_sample_rate = 0.1
+    mock.quality_weight = 0.3
+    mock.score_flush_interval_seconds = 60
+    mock.score_retention_days = 30
+    mock.usage_aggregation_interval_seconds = 86400
+    mock.usage_retention_days = 90
+    mock.debug_log_cleanup_interval_seconds = 3600
+    mock.debug_log_retention_hours = 48
+    return patch("gateway.main.settings", mock)
 
 
 class TestLifespanBittensorDisabled:
@@ -45,6 +71,7 @@ class TestLifespanStartupFailure:
         mock_subtensor.metagraph.side_effect = ConnectionError("chain unreachable")
 
         with (
+            _bt_settings_patch(),
             patch("gateway.main.create_wallet", return_value=MagicMock()),
             patch("gateway.main.create_subtensor", return_value=mock_subtensor),
             patch("gateway.main.create_dendrite", return_value=MagicMock()),
@@ -62,6 +89,7 @@ class TestLifespanStartupFailure:
     async def test_startup_logs_error_details_on_bittensor_failure(self) -> None:
         """Bittensor init failure logs include the actual error details."""
         with (
+            _bt_settings_patch(),
             patch(
                 "gateway.main.create_wallet",
                 side_effect=FileNotFoundError("wallet not found at /fake/path"),
@@ -99,6 +127,7 @@ class TestLifespanShutdown:
         mock_dendrite.aclose_session = AsyncMock()
 
         with (
+            _bt_settings_patch(),
             patch("gateway.main.create_wallet", return_value=MagicMock()),
             patch("gateway.main.create_subtensor", return_value=mock_subtensor),
             patch("gateway.main.create_dendrite", return_value=mock_dendrite),
@@ -125,6 +154,7 @@ class TestLifespanShutdown:
         mock_dendrite.aclose_session = AsyncMock()
 
         with (
+            _bt_settings_patch(),
             patch("gateway.main.create_wallet", return_value=MagicMock()),
             patch("gateway.main.create_subtensor", return_value=mock_subtensor),
             patch("gateway.main.create_dendrite", return_value=mock_dendrite),
@@ -142,5 +172,4 @@ class TestLifespanShutdown:
             async with lifespan(test_app):
                 pass
 
-            # Despite stop() failing, dendrite cleanup should still happen
             mock_dendrite.aclose_session.assert_called_once()
