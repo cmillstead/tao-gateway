@@ -311,15 +311,17 @@ class TestRateLimitRedisUnavailable:
         """Requests are rejected when Redis is unavailable (fail-closed)."""
         from gateway.core.exceptions import RateLimitExceededError
 
-        with patch(
-            "gateway.middleware.rate_limit.get_redis",
-            new_callable=AsyncMock,
-            side_effect=ConnectionError("Redis down"),
+        with (
+            patch(
+                "gateway.middleware.rate_limit.get_redis",
+                new_callable=AsyncMock,
+                side_effect=ConnectionError("Redis down"),
+            ),
+            pytest.raises(RateLimitExceededError),
         ):
-            with pytest.raises(RateLimitExceededError):
-                await check_rate_limit(
-                    key_id="fail-key", subnet_id="sn1", limits=_TEST_LIMITS
-                )
+            await check_rate_limit(
+                key_id="fail-key", subnet_id="sn1", limits=_TEST_LIMITS
+            )
 
 
 # ---- Task 5.10: Integration test ----
