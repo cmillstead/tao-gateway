@@ -2,6 +2,7 @@ import warnings
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
@@ -36,6 +37,7 @@ class Settings(BaseSettings):
     app_name: str = "TaoGateway"
     app_version: str = _get_app_version()
     debug: bool = False
+    log_format: Literal["console", "json"] = "console"
 
     # Auth
     jwt_secret_key: str = Field(default=_INSECURE_DEFAULT_SECRET, repr=False)

@@ -2,7 +2,7 @@
 	# Global options
 }
 
-your-domain.com {
+{$DOMAIN:your-domain.com} {
 	# TLS is automatic via Let's Encrypt
 	# Enforce TLS 1.2+ minimum
 	tls {
