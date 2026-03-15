@@ -1,8 +1,6 @@
-"""Tests for lifespan startup/shutdown behavior — Bittensor initialization paths.
+"""Tests for lifespan startup/shutdown behavior.
 
-NOTE: These tests mock deep Bittensor SDK internals and are fragile across
-SDK versions. They are marked xfail in CI where the SDK version may differ
-from local dev.
+Uses real Postgres and Redis (per CLAUDE.md). Only Bittensor SDK is mocked.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,24 +9,39 @@ import pytest
 
 from gateway.subnets.registry import AdapterRegistry
 
-# These tests depend on Bittensor SDK mock internals that vary across versions.
-_XFAIL_BT_MOCK = pytest.mark.xfail(
-    reason="Bittensor SDK mock fragility — passes locally, flaky in CI",
-    strict=False,
-)
+
+class TestLifespanBittensorDisabled:
+    """Test that lifespan succeeds without Bittensor when disabled."""
+
+    @pytest.mark.asyncio
+    async def test_startup_succeeds_without_bittensor(self) -> None:
+        """When enable_bittensor=False, gateway starts with real DB/Redis but no wallet."""
+        with patch("gateway.main.settings") as mock_settings:
+            mock_settings.enable_bittensor = False
+            mock_settings.app_version = "0.0.0-test"
+            mock_settings.usage_aggregation_interval_seconds = 86400
+            mock_settings.usage_retention_days = 90
+            mock_settings.debug_log_cleanup_interval_seconds = 3600
+            mock_settings.debug_log_retention_hours = 48
+
+            from fastapi import FastAPI
+
+            from gateway.main import lifespan
+
+            test_app = FastAPI()
+            async with lifespan(test_app):
+                assert test_app.state.dendrite is None
+                assert test_app.state.miner_selector is None
+                assert isinstance(test_app.state.adapter_registry, AdapterRegistry)
 
 
 class TestLifespanStartupFailure:
-    """Test that lifespan aborts when initial metagraph sync yields no data."""
+    """Test that lifespan aborts when Bittensor init fails."""
 
-    @_XFAIL_BT_MOCK
     @pytest.mark.asyncio
     async def test_startup_raises_when_initial_metagraph_empty(self) -> None:
         """If initial sync completes but metagraph is still None, startup must fail."""
         mock_subtensor = MagicMock()
-        # metagraph() returns a metagraph with n=0 and None-like behavior
-        # but we make sync_all succeed while leaving metagraph as None by
-        # having the subtensor raise so sync_all catches and keeps None
         mock_subtensor.metagraph.side_effect = ConnectionError("chain unreachable")
 
         with (
@@ -45,7 +58,6 @@ class TestLifespanStartupFailure:
                 async with lifespan(test_app):
                     pass
 
-    @_XFAIL_BT_MOCK
     @pytest.mark.asyncio
     async def test_startup_logs_error_details_on_bittensor_failure(self) -> None:
         """Bittensor init failure logs include the actual error details."""
@@ -72,48 +84,9 @@ class TestLifespanStartupFailure:
             )
 
 
-class TestLifespanBittensorDisabled:
-    """Test that lifespan succeeds without Bittensor when disabled."""
-
-    @pytest.mark.asyncio
-    async def test_startup_succeeds_without_bittensor(self) -> None:
-        """When enable_bittensor=False, gateway starts without wallet/subtensor."""
-        with (
-            patch("gateway.main.settings") as mock_settings,
-            patch("gateway.main.get_engine") as mock_engine,
-            patch("gateway.main.get_redis") as mock_redis,
-            patch("gateway.main.close_redis", new_callable=AsyncMock),
-        ):
-            mock_settings.enable_bittensor = False
-            mock_settings.app_version = "0.0.0-test"
-
-            mock_conn = AsyncMock()
-            mock_engine_instance = MagicMock()
-            mock_engine_instance.connect.return_value.__aenter__ = AsyncMock(
-                return_value=mock_conn
-            )
-            mock_engine_instance.connect.return_value.__aexit__ = AsyncMock()
-            mock_engine_instance.dispose = AsyncMock()
-            mock_engine.return_value = mock_engine_instance
-
-            mock_redis_instance = AsyncMock()
-            mock_redis.return_value = mock_redis_instance
-
-            from fastapi import FastAPI
-
-            from gateway.main import lifespan
-
-            test_app = FastAPI()
-            async with lifespan(test_app):
-                assert test_app.state.dendrite is None
-                assert test_app.state.miner_selector is None
-                assert isinstance(test_app.state.adapter_registry, AdapterRegistry)
-
-
 class TestLifespanShutdown:
-    """Test that shutdown cleans up Bittensor resources."""
+    """Test that shutdown cleans up Bittensor resources with real DB/Redis."""
 
-    @_XFAIL_BT_MOCK
     @pytest.mark.asyncio
     async def test_dendrite_session_closed_on_shutdown(self) -> None:
         """dendrite.aclose_session() is called during shutdown."""
@@ -129,41 +102,20 @@ class TestLifespanShutdown:
             patch("gateway.main.create_wallet", return_value=MagicMock()),
             patch("gateway.main.create_subtensor", return_value=mock_subtensor),
             patch("gateway.main.create_dendrite", return_value=mock_dendrite),
-            patch("gateway.main.get_engine") as mock_engine,
-            patch("gateway.main.get_redis") as mock_redis,
-            patch("gateway.main.close_redis", new_callable=AsyncMock),
         ):
-            # Mock DB and Redis to pass startup checks
-            mock_conn = AsyncMock()
-            mock_engine_instance = MagicMock()
-            mock_engine_instance.connect.return_value.__aenter__ = AsyncMock(
-                return_value=mock_conn
-            )
-            mock_engine_instance.connect.return_value.__aexit__ = AsyncMock()
-            mock_engine_instance.dispose = AsyncMock()
-            mock_engine.return_value = mock_engine_instance
-
-            mock_redis_instance = AsyncMock()
-            mock_redis.return_value = mock_redis_instance
-
             from fastapi import FastAPI
 
             from gateway.main import lifespan
 
             test_app = FastAPI()
-
-            # metagraph sync returns n=0, but metagraph is not None so startup passes
-            # However, the startup guard checks get_metagraph() which returns
-            # the mock_metagraph (not None). So startup should proceed.
             async with lifespan(test_app):
                 pass
 
             mock_dendrite.aclose_session.assert_called_once()
 
-    @_XFAIL_BT_MOCK
     @pytest.mark.asyncio
     async def test_shutdown_continues_after_metagraph_stop_failure(self) -> None:
-        """If metagraph_manager.stop() raises, shutdown still disposes engine and closes Redis."""
+        """If metagraph_manager.stop() raises, shutdown still completes."""
         mock_subtensor = MagicMock()
         mock_metagraph = MagicMock()
         mock_metagraph.n = 0
@@ -172,33 +124,16 @@ class TestLifespanShutdown:
         mock_dendrite = MagicMock()
         mock_dendrite.aclose_session = AsyncMock()
 
-        mock_close_redis = AsyncMock()
-
         with (
             patch("gateway.main.create_wallet", return_value=MagicMock()),
             patch("gateway.main.create_subtensor", return_value=mock_subtensor),
             patch("gateway.main.create_dendrite", return_value=mock_dendrite),
-            patch("gateway.main.get_engine") as mock_engine,
-            patch("gateway.main.get_redis") as mock_redis,
-            patch("gateway.main.close_redis", mock_close_redis),
             patch(
                 "gateway.main.MetagraphManager.stop",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("stop failed"),
             ),
         ):
-            mock_conn = AsyncMock()
-            mock_engine_instance = MagicMock()
-            mock_engine_instance.connect.return_value.__aenter__ = AsyncMock(
-                return_value=mock_conn
-            )
-            mock_engine_instance.connect.return_value.__aexit__ = AsyncMock()
-            mock_engine_instance.dispose = AsyncMock()
-            mock_engine.return_value = mock_engine_instance
-
-            mock_redis_instance = AsyncMock()
-            mock_redis.return_value = mock_redis_instance
-
             from fastapi import FastAPI
 
             from gateway.main import lifespan
@@ -207,7 +142,5 @@ class TestLifespanShutdown:
             async with lifespan(test_app):
                 pass
 
-            # Despite stop() failing, engine.dispose() and close_redis() should still be called
-            mock_engine_instance.dispose.assert_called_once()
-            mock_close_redis.assert_called_once()
+            # Despite stop() failing, dendrite cleanup should still happen
             mock_dendrite.aclose_session.assert_called_once()
