@@ -30,6 +30,7 @@ from gateway.routing.scorer import MinerScorer
 from gateway.routing.selector import MinerSelector
 from gateway.subnets import ADAPTER_DEFINITIONS
 from gateway.subnets.registry import AdapterRegistry
+from gateway.tasks.debug_cleanup import DebugLogCleanupTask
 from gateway.tasks.score_flush import ScoreFlushTask
 from gateway.tasks.usage_aggregation import UsageAggregationTask
 
@@ -154,9 +155,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await usage_aggregation_task.start()
     app.state.usage_aggregation_task = usage_aggregation_task
 
+    # Debug log cleanup task (runs regardless of Bittensor)
+    debug_cleanup_task = DebugLogCleanupTask(
+        session_factory=get_session_factory(),
+        cleanup_interval_seconds=settings.debug_log_cleanup_interval_seconds,
+        retention_hours=settings.debug_log_retention_hours,
+    )
+    await debug_cleanup_task.start()
+    app.state.debug_cleanup_task = debug_cleanup_task
+
     yield
 
     # Shutdown — each step guarded so one failure doesn't skip the rest
+    try:
+        await debug_cleanup_task.stop()
+    except Exception:
+        logger.warning("shutdown_debug_cleanup_failed", exc_info=True)
     try:
         await usage_aggregation_task.stop()
     except Exception:
@@ -197,7 +211,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 app.add_middleware(SecurityHeadersMiddleware)

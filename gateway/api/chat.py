@@ -13,7 +13,7 @@ from gateway.core.database import get_session_factory
 from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
 from gateway.middleware.rate_limit import RateLimitResult, enforce_rate_limit
-from gateway.middleware.usage import record_usage
+from gateway.middleware.usage import record_usage, safe_json_dumps
 from gateway.schemas.chat import ChatCompletionRequest, ChatCompletionResponse
 from gateway.subnets.base import SSE_DONE
 
@@ -86,10 +86,16 @@ async def _handle_stream(
 
     stream_start = time.monotonic()
 
+    # Capture request body for debug logging before streaming starts
+    debug_request_body = body.model_dump_json() if (api_key and api_key.debug_mode) else None
+
     async def _generator() -> AsyncGenerator[str, None]:
         had_error = False
+        collected_chunks: list[str] = [] if (api_key and api_key.debug_mode) else []
         try:
             async for chunk in stream:
+                if api_key and api_key.debug_mode:
+                    collected_chunks.append(chunk)
                 yield chunk
         except GatewayError as exc:
             had_error = True
@@ -113,6 +119,11 @@ async def _handle_stream(
         finally:
             elapsed_ms = round((time.monotonic() - stream_start) * 1000)
             if api_key is not None:
+                debug_response = (
+                    "".join(collected_chunks)
+                    if (api_key.debug_mode and collected_chunks)
+                    else None
+                )
                 asyncio.create_task(record_usage(
                     session_factory=get_session_factory(),
                     api_key_id=api_key.key_id,
@@ -123,6 +134,9 @@ async def _handle_stream(
                     miner_uid=miner_uid,
                     latency_ms=elapsed_ms,
                     status_code=200 if not had_error else 502,
+                    debug_mode=api_key.debug_mode,
+                    request_body=debug_request_body,
+                    response_body=debug_response,
                 ))
 
         if not had_error:
@@ -183,6 +197,8 @@ async def _handle_non_stream(
                 miner_uid=None,
                 latency_ms=0,
                 status_code=exc.status_code,
+                debug_mode=api_key.debug_mode,
+                request_body=body.model_dump_json() if api_key.debug_mode else None,
             ))
         raise
     except Exception as exc:
@@ -203,6 +219,8 @@ async def _handle_non_stream(
                 miner_uid=None,
                 latency_ms=0,
                 status_code=500,
+                debug_mode=api_key.debug_mode,
+                request_body=body.model_dump_json() if api_key.debug_mode else None,
             ))
         raise
 
@@ -235,6 +253,9 @@ async def _handle_non_stream(
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
             total_tokens=usage.get("total_tokens", 0),
+            debug_mode=api_key.debug_mode,
+            request_body=body.model_dump_json() if api_key.debug_mode else None,
+            response_body=safe_json_dumps(response_data) if api_key.debug_mode else None,
         ))
 
     logger.info(

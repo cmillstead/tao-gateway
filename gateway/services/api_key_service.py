@@ -1,6 +1,7 @@
 import re
 import secrets
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import structlog
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.exceptions import GatewayError
 from gateway.core.security import ph
 from gateway.models.api_key import ApiKey
+from gateway.models.debug_log import DebugLog
 
 logger = structlog.get_logger()
 
@@ -206,3 +208,83 @@ async def rotate_api_key(
             logger.warning("rotate_cache_tombstone_failed", key_id=str(key_id))
 
     return new_key, full_key, old_key
+
+
+async def update_api_key(
+    key_id: uuid.UUID,
+    org_id: uuid.UUID,
+    db: AsyncSession,
+    redis: Redis | None,
+    *,
+    debug_mode: bool | None = None,
+) -> ApiKey | None:
+    """Update mutable fields on an API key.
+
+    Currently only debug_mode is updatable. Invalidates the Redis cache
+    so the next auth request picks up the new value.
+    """
+    key = await db.scalar(
+        select(ApiKey).where(
+            ApiKey.id == key_id, ApiKey.org_id == org_id, ApiKey.is_active.is_(True)
+        )
+    )
+    if key is None:
+        return None
+
+    if debug_mode is not None:
+        key.debug_mode = debug_mode
+
+    await db.commit()
+    await db.refresh(key)
+
+    # Invalidate Redis cache so next auth picks up the change
+    if redis is not None:
+        cache_key = f"api_key:{key.prefix}"
+        try:
+            await redis.delete(cache_key)
+        except Exception:
+            logger.warning("update_cache_invalidation_failed", key_id=str(key_id))
+
+    return key
+
+
+async def get_debug_logs(
+    key_id: uuid.UUID,
+    org_id: uuid.UUID,
+    db: AsyncSession,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple[list[DebugLog], int]:
+    """Get debug logs for a specific API key, with org ownership validation."""
+    # Verify key belongs to the requesting org
+    key = await db.scalar(
+        select(ApiKey).where(ApiKey.id == key_id, ApiKey.org_id == org_id)
+    )
+    if key is None:
+        raise GatewayError(
+            "API key not found",
+            status_code=404,
+            error_type="not_found",
+        )
+
+    # Enforce 48h TTL at query time — entries beyond retention are not returned
+    # even if the cleanup task hasn't run yet
+    from gateway.core.config import settings
+
+    cutoff = datetime.now(UTC) - timedelta(hours=settings.debug_log_retention_hours)
+
+    total = await db.scalar(
+        select(func.count())
+        .select_from(DebugLog)
+        .where(DebugLog.api_key_id == key_id, DebugLog.created_at >= cutoff)
+    ) or 0
+
+    result = await db.scalars(
+        select(DebugLog)
+        .where(DebugLog.api_key_id == key_id, DebugLog.created_at >= cutoff)
+        .order_by(DebugLog.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.all()), total
