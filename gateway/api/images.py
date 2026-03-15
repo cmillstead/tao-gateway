@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-import asyncio
+from typing import TYPE_CHECKING
 
-import structlog
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
 
-from gateway.core.constants import HDR_LATENCY_MS, HDR_MINER_UID, HDR_SUBNET
-from gateway.core.database import get_session_factory
-from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
+from gateway.api._subnet_handler import execute_subnet_request
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
 from gateway.middleware.rate_limit import enforce_rate_limit
-from gateway.middleware.usage import record_usage, safe_json_dumps
 from gateway.schemas.images import ImageGenerationRequest, ImageGenerationResponse
 
-logger = structlog.get_logger()
+if TYPE_CHECKING:
+    from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -29,102 +25,18 @@ async def generate_image(
     config = adapter.get_config()
     rate_result = await enforce_rate_limit(str(api_key.key_id), config.netuid, config.subnet_name)
     request.state.rate_limit_result = rate_result
-    dendrite = request.app.state.dendrite
-    miner_selector = request.app.state.miner_selector
-    scorer = getattr(request.app.state, "scorer", None)
 
-    logger.info(
-        "image_generation_request",
-        model=body.model,
-        size=body.size,
-    )
-
-    config = adapter.get_config()
-
-    try:
-        response_data, headers = await adapter.execute(
-            request_data=body.model_dump(),
-            dendrite=dendrite,
-            miner_selector=miner_selector,
-            scorer=scorer,
-        )
-    except GatewayError as exc:
-        logger.warning(
-            "image_generation_error",
-            model=body.model,
-            error_type=exc.error_type,
-            status_code=exc.status_code,
-        )
-        asyncio.create_task(record_usage(
-            session_factory=get_session_factory(),
-            api_key_id=api_key.key_id,
-            org_id=api_key.org_id,
-            subnet_name=config.subnet_name,
-            netuid=config.netuid,
-            endpoint="/v1/images/generate",
-            miner_uid=None,
-            latency_ms=0,
-            status_code=exc.status_code,
-            debug_mode=api_key.debug_mode,
-            request_body=body.model_dump_json() if api_key.debug_mode else None,
-        ))
-        raise
-    except Exception as exc:
-        logger.error(
-            "image_generation_error",
-            model=body.model,
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        asyncio.create_task(record_usage(
-            session_factory=get_session_factory(),
-            api_key_id=api_key.key_id,
-            org_id=api_key.org_id,
-            subnet_name=config.subnet_name,
-            netuid=config.netuid,
-            endpoint="/v1/images/generate",
-            miner_uid=None,
-            latency_ms=0,
-            status_code=500,
-            debug_mode=api_key.debug_mode,
-            request_body=body.model_dump_json() if api_key.debug_mode else None,
-        ))
-        raise
-
-    # Validate response against schema before returning
-    try:
-        ImageGenerationResponse.model_validate(response_data)
-    except Exception as exc:
-        logger.error(
-            "image_generation_response_invalid",
-            model=body.model,
-            error=str(exc),
-        )
-        raise MinerInvalidResponseError(
-            miner_uid=headers.get(HDR_MINER_UID, "unknown"),
-            subnet=headers.get(HDR_SUBNET, "unknown"),
-        ) from exc
-
-    asyncio.create_task(record_usage(
-        session_factory=get_session_factory(),
-        api_key_id=api_key.key_id,
-        org_id=api_key.org_id,
-        subnet_name=config.subnet_name,
-        netuid=config.netuid,
+    return await execute_subnet_request(
+        adapter=adapter,
+        request_data=body.model_dump(),
+        request_body_json=body.model_dump_json(),
+        response_schema=ImageGenerationResponse,
+        api_key=api_key,
+        rate_result=rate_result,
         endpoint="/v1/images/generate",
-        miner_uid=headers.get(HDR_MINER_UID),
-        latency_ms=int(headers.get(HDR_LATENCY_MS, 0)),
-        status_code=200,
-        debug_mode=api_key.debug_mode,
-        request_body=body.model_dump_json() if api_key.debug_mode else None,
-        response_body=safe_json_dumps(response_data) if api_key.debug_mode else None,
-    ))
-
-    logger.info(
-        "image_generation_success",
-        model=body.model,
-        miner_uid=headers.get(HDR_MINER_UID),
-        latency_ms=headers.get(HDR_LATENCY_MS),
+        log_event="image_generation",
+        dendrite=request.app.state.dendrite,
+        miner_selector=request.app.state.miner_selector,
+        scorer=getattr(request.app.state, "scorer", None),
+        extra_log={"size": body.size},
     )
-
-    return JSONResponse(content=response_data, headers={**headers, **rate_result.to_headers()})

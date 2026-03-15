@@ -48,9 +48,6 @@ class Settings(BaseSettings):
 
     # Rate limiting
     trusted_proxies: list[str] = []
-    chat_rate_limit_per_minute: int = 60
-    images_rate_limit_per_minute: int = 30
-    code_rate_limit_per_minute: int = 60
 
     # CORS
     allowed_origins: list[str] = []

@@ -8,12 +8,13 @@ import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from gateway.core.constants import HDR_LATENCY_MS, HDR_MINER_UID, HDR_SUBNET
+from gateway.api._subnet_handler import execute_subnet_request
+from gateway.core.constants import HDR_MINER_UID
 from gateway.core.database import get_session_factory
-from gateway.core.exceptions import GatewayError, MinerInvalidResponseError
+from gateway.core.exceptions import GatewayError
 from gateway.middleware.auth import ApiKeyInfo, get_current_api_key
 from gateway.middleware.rate_limit import RateLimitResult, enforce_rate_limit
-from gateway.middleware.usage import record_usage, safe_json_dumps
+from gateway.middleware.usage import record_usage
 from gateway.schemas.chat import ChatCompletionRequest, ChatCompletionResponse
 from gateway.subnets.base import SSE_DONE
 
@@ -91,10 +92,10 @@ async def _handle_stream(
 
     async def _generator() -> AsyncGenerator[str, None]:
         had_error = False
-        collected_chunks: list[str] = [] if (api_key and api_key.debug_mode) else []
+        collected_chunks: list[str] | None = [] if (api_key and api_key.debug_mode) else None
         try:
             async for chunk in stream:
-                if api_key and api_key.debug_mode:
+                if collected_chunks is not None:
                     collected_chunks.append(chunk)
                 yield chunk
         except GatewayError as exc:
@@ -164,105 +165,21 @@ async def _handle_non_stream(
     api_key: ApiKeyInfo | None = None,
 ) -> JSONResponse:
     """Handle non-streaming chat completion request."""
-    logger.info(
-        "chat_completion_request",
-        model=body.model,
-        message_count=len(body.messages),
+    if api_key is None:
+        msg = "API key required"
+        raise ValueError(msg)
+
+    return await execute_subnet_request(
+        adapter=adapter,
+        request_data=body.model_dump(),
+        request_body_json=body.model_dump_json(),
+        response_schema=ChatCompletionResponse,
+        api_key=api_key,
+        rate_result=rate_result,
+        endpoint="/v1/chat/completions",
+        log_event="chat_completion",
+        dendrite=dendrite,
+        miner_selector=miner_selector,
+        scorer=scorer,
+        extra_log={"message_count": len(body.messages)},
     )
-
-    config = adapter.get_config()
-
-    try:
-        response_data, headers = await adapter.execute(
-            request_data=body.model_dump(),
-            dendrite=dendrite,
-            miner_selector=miner_selector,
-            scorer=scorer,
-        )
-    except GatewayError as exc:
-        logger.warning(
-            "chat_completion_error",
-            model=body.model,
-            error_type=exc.error_type,
-            status_code=exc.status_code,
-        )
-        if api_key is not None:
-            asyncio.create_task(record_usage(
-                session_factory=get_session_factory(),
-                api_key_id=api_key.key_id,
-                org_id=api_key.org_id,
-                subnet_name=config.subnet_name,
-                netuid=config.netuid,
-                endpoint="/v1/chat/completions",
-                miner_uid=None,
-                latency_ms=0,
-                status_code=exc.status_code,
-                debug_mode=api_key.debug_mode,
-                request_body=body.model_dump_json() if api_key.debug_mode else None,
-            ))
-        raise
-    except Exception as exc:
-        logger.error(
-            "chat_completion_error",
-            model=body.model,
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        if api_key is not None:
-            asyncio.create_task(record_usage(
-                session_factory=get_session_factory(),
-                api_key_id=api_key.key_id,
-                org_id=api_key.org_id,
-                subnet_name=config.subnet_name,
-                netuid=config.netuid,
-                endpoint="/v1/chat/completions",
-                miner_uid=None,
-                latency_ms=0,
-                status_code=500,
-                debug_mode=api_key.debug_mode,
-                request_body=body.model_dump_json() if api_key.debug_mode else None,
-            ))
-        raise
-
-    # Validate response against OpenAI schema before returning
-    try:
-        ChatCompletionResponse.model_validate(response_data)
-    except Exception as exc:
-        logger.error(
-            "chat_completion_response_invalid",
-            model=body.model,
-            error=str(exc),
-        )
-        raise MinerInvalidResponseError(
-            miner_uid=headers.get(HDR_MINER_UID, "unknown"),
-            subnet=headers.get(HDR_SUBNET, "unknown"),
-        ) from exc
-
-    if api_key is not None:
-        usage = response_data.get("usage", {})
-        asyncio.create_task(record_usage(
-            session_factory=get_session_factory(),
-            api_key_id=api_key.key_id,
-            org_id=api_key.org_id,
-            subnet_name=config.subnet_name,
-            netuid=config.netuid,
-            endpoint="/v1/chat/completions",
-            miner_uid=headers.get(HDR_MINER_UID),
-            latency_ms=int(headers.get(HDR_LATENCY_MS, 0)),
-            status_code=200,
-            prompt_tokens=usage.get("prompt_tokens", 0),
-            completion_tokens=usage.get("completion_tokens", 0),
-            total_tokens=usage.get("total_tokens", 0),
-            debug_mode=api_key.debug_mode,
-            request_body=body.model_dump_json() if api_key.debug_mode else None,
-            response_body=safe_json_dumps(response_data) if api_key.debug_mode else None,
-        ))
-
-    logger.info(
-        "chat_completion_success",
-        model=body.model,
-        miner_uid=headers.get(HDR_MINER_UID),
-        latency_ms=headers.get(HDR_LATENCY_MS),
-    )
-
-    return JSONResponse(content=response_data, headers={**headers, **rate_result.to_headers()})

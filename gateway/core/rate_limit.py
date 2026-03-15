@@ -53,7 +53,7 @@ class _FallbackStore:
             self._entries[key] = (now, 1)
             return True
         window_start, count = entry
-        if count > limit:
+        if count >= limit:
             return False
         self._entries[key] = (window_start, count + 1)
         return True
