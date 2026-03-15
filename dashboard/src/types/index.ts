@@ -17,3 +17,9 @@ export type ApiKey = components["schemas"]["ApiKeyListItem"];
 export type ApiKeyCreateRequest = components["schemas"]["ApiKeyCreateRequest"];
 export type SubnetOverview = components["schemas"]["SubnetOverview"];
 export type SubnetRateLimits = components["schemas"]["SubnetRateLimits"];
+export type DashboardUsageResponse =
+  components["schemas"]["DashboardUsageResponse"];
+export type SubnetUsageWithQuota =
+  components["schemas"]["SubnetUsageWithQuota"];
+export type UsageSummary = components["schemas"]["UsageSummary"];
+export type SubnetQuota = components["schemas"]["SubnetQuota"];

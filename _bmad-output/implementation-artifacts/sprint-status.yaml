@@ -77,7 +77,7 @@ development_status:
   # Epic 5: Usage Monitoring & Analytics
   epic-5: in-progress
   5-1-usage-metering-and-storage: done
-  5-2-usage-dashboard-and-quota-display: backlog
+  5-2-usage-dashboard-and-quota-display: done
   5-3-debug-mode-and-content-cleanup: backlog
   epic-5-retrospective: optional
 

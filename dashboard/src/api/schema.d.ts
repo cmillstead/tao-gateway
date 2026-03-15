@@ -224,6 +224,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dashboard/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dashboard Usage
+         * @description Return per-subnet usage with quota info for the dashboard.
+         */
+        get: operations["get_dashboard_usage_dashboard_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage
+         * @description Return per-subnet usage data with quota for the authenticated key's org.
+         */
+        get: operations["get_usage_v1_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chat/completions": {
         parameters: {
             query?: never;
@@ -382,6 +422,26 @@ export interface components {
             /** Context */
             context?: string | null;
         };
+        /**
+         * DashboardUsageResponse
+         * @description Response for GET /dashboard/usage.
+         */
+        DashboardUsageResponse: {
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Granularity */
+            granularity: string;
+            /** Subnets */
+            subnets?: components["schemas"]["SubnetUsageWithQuota"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -486,6 +546,22 @@ export interface components {
             status: "healthy" | "degraded" | "unavailable";
             rate_limits: components["schemas"]["SubnetRateLimits"];
         };
+        /**
+         * SubnetQuota
+         * @description Quota status for a single subnet.
+         */
+        SubnetQuota: {
+            /** Subnet Name */
+            subnet_name: string;
+            /** Netuid */
+            netuid: number;
+            /** Monthly Limit */
+            monthly_limit: number;
+            /** Monthly Used */
+            monthly_used: number;
+            /** Monthly Remaining */
+            monthly_remaining: number;
+        };
         /** SubnetRateLimits */
         SubnetRateLimits: {
             /** Minute */
@@ -494,6 +570,70 @@ export interface components {
             day: number;
             /** Month */
             month: number;
+        };
+        /**
+         * SubnetUsageWithQuota
+         * @description Subnet usage with quota information for dashboard.
+         */
+        SubnetUsageWithQuota: {
+            /** Subnet Name */
+            subnet_name: string;
+            /** Netuid */
+            netuid: number;
+            /** Summaries */
+            summaries?: components["schemas"]["UsageSummary"][];
+            quota?: components["schemas"]["SubnetQuota"] | null;
+        };
+        /**
+         * UsageSummary
+         * @description Usage data for a single time period (day or month).
+         */
+        UsageSummary: {
+            /**
+             * Period
+             * @description Date string: YYYY-MM-DD for daily, YYYY-MM for monthly
+             */
+            period: string;
+            /**
+             * Request Count
+             * @default 0
+             */
+            request_count: number;
+            /**
+             * Success Count
+             * @default 0
+             */
+            success_count: number;
+            /**
+             * Error Count
+             * @default 0
+             */
+            error_count: number;
+            /**
+             * P50 Latency Ms
+             * @default 0
+             */
+            p50_latency_ms: number;
+            /**
+             * P95 Latency Ms
+             * @default 0
+             */
+            p95_latency_ms: number;
+            /**
+             * P99 Latency Ms
+             * @default 0
+             */
+            p99_latency_ms: number;
+            /**
+             * Total Prompt Tokens
+             * @default 0
+             */
+            total_prompt_tokens: number;
+            /**
+             * Total Completion Tokens
+             * @default 0
+             */
+            total_completion_tokens: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -882,6 +1022,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OverviewResponse"];
+                };
+            };
+        };
+    };
+    get_dashboard_usage_dashboard_usage_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by subnet name */
+                subnet?: string | null;
+                /** @description Start date (ISO 8601) */
+                start_date?: string | null;
+                /** @description End date (ISO 8601) */
+                end_date?: string | null;
+                granularity?: "daily" | "monthly";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardUsageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_usage_v1_usage_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by subnet name */
+                subnet?: string | null;
+                /** @description Start date (ISO 8601) */
+                start_date?: string | null;
+                /** @description End date (ISO 8601) */
+                end_date?: string | null;
+                granularity?: "daily" | "monthly";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardUsageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
