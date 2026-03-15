@@ -32,7 +32,7 @@ async def get_redis() -> Redis:
                 client = Redis.from_url(
                     settings.redis_url, max_connections=settings.redis_max_connections
                 )
-                await client.ping()  # type: ignore[misc]
+                await client.ping()
                 redis_client = client
             except Exception:
                 _last_failure_time = time.monotonic()

@@ -305,19 +305,21 @@ class TestEnforceRateLimit:
 
 
 class TestRateLimitRedisUnavailable:
-    """Verify graceful degradation when Redis is down."""
+    """Verify fail-closed behavior when Redis is down (SEC-001)."""
 
-    async def test_fail_open_when_redis_down(self):
-        """Requests are allowed when Redis is unavailable (fail-open)."""
+    async def test_fail_closed_when_redis_down(self):
+        """Requests are rejected when Redis is unavailable (fail-closed)."""
+        from gateway.core.exceptions import RateLimitExceededError
+
         with patch(
             "gateway.middleware.rate_limit.get_redis",
             new_callable=AsyncMock,
             side_effect=ConnectionError("Redis down"),
         ):
-            result = await check_rate_limit(
-                key_id="fail-key", subnet_id="sn1", limits=_TEST_LIMITS
-            )
-            assert result.allowed is True
+            with pytest.raises(RateLimitExceededError):
+                await check_rate_limit(
+                    key_id="fail-key", subnet_id="sn1", limits=_TEST_LIMITS
+                )
 
 
 # ---- Task 5.10: Integration test ----

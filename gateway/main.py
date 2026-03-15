@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     try:
         redis = await get_redis()
-        await redis.ping()  # type: ignore[misc]
+        await redis.ping()
         logger.info("startup_redis_ok")
     except Exception:
         logger.error("startup_redis_failed")
@@ -309,10 +309,19 @@ if _DASHBOARD_DIST.is_dir():
     if _ASSETS_DIR.is_dir():
         app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="dashboard-assets")
 
+    _ALLOWED_STATIC_EXT = {
+        ".html", ".js", ".css", ".png", ".jpg", ".svg", ".ico",
+        ".woff", ".woff2", ".ttf", ".json", ".webp", ".txt",
+    }
+
     @app.get("/{path:path}", include_in_schema=False)
     async def spa_fallback(path: str) -> FileResponse:
         """Catch-all: serve index.html for SPA client-side routing."""
         file_path = _DASHBOARD_DIST / path
-        if file_path.is_file() and file_path.resolve().is_relative_to(_DASHBOARD_DIST):
+        if (
+            file_path.is_file()
+            and file_path.resolve().is_relative_to(_DASHBOARD_DIST)
+            and file_path.suffix.lower() in _ALLOWED_STATIC_EXT
+        ):
             return FileResponse(str(file_path))
         return FileResponse(str(_DASHBOARD_DIST / "index.html"))

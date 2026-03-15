@@ -58,10 +58,13 @@ async def test_api_key_cache_miss_valid_key_populates_cache() -> None:
         assert result.key_id == api_key_record.id
         assert result.org_id == org.id
 
-        # Verify cache was populated in real Redis
+        # Verify cache was populated in real Redis (prefix is hashed for SEC-016)
+        from hashlib import sha256
+
         redis = await get_redis()
         prefix = full_key[:API_KEY_PREFIX_LENGTH]
-        cached = await redis.get(f"api_key:{prefix}")
+        prefix_hash = sha256(prefix.encode()).hexdigest()[:16]
+        cached = await redis.get(f"api_key:{prefix_hash}")
         assert cached is not None
         cached_str = cached.decode()
         assert str(api_key_record.id) in cached_str

@@ -72,7 +72,6 @@ async def validation_exception_handler(
         field_errors.append({
             "field": field,
             "message": error.get("msg", "Validation error"),
-            "value": error.get("input"),
         })
 
     return JSONResponse(

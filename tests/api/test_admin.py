@@ -327,7 +327,7 @@ async def test_miners_returns_quality_data(test_app):
             miners = data["subnets"]["sn1"]
             assert len(miners) == 1
             assert miners[0]["miner_uid"] == 42
-            assert miners[0]["hotkey"] == "test_hotkey_42"
+            assert miners[0]["hotkey_prefix"] == "test_hot"
             assert miners[0]["total_requests"] == 1
             assert miners[0]["successful_requests"] == 1
 

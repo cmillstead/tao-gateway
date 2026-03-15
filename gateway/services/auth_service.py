@@ -148,7 +148,9 @@ async def rotate_refresh_token(old_token: str, db: AsyncSession) -> tuple[str, s
     """
     old_hash = _hash_refresh_token(old_token)
     record = await db.scalar(
-        select(RefreshToken).where(RefreshToken.token_hash == old_hash)
+        select(RefreshToken)
+        .where(RefreshToken.token_hash == old_hash)
+        .with_for_update()
     )
     if record is None:
         raise AuthenticationError("Invalid refresh token")

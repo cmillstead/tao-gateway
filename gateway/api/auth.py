@@ -120,14 +120,14 @@ def _set_auth_cookies(
         httponly=_COOKIE_HTTPONLY,
         secure=secure,
         samesite=_COOKIE_SAMESITE,
-        path="/auth",
+        path="/auth/refresh",
         max_age=max_age_refresh,
     )
 
 
 def _clear_auth_cookies(response: JSONResponse) -> None:
     response.delete_cookie(key="access_token", path=_COOKIE_PATH)
-    response.delete_cookie(key="refresh_token", path="/auth")
+    response.delete_cookie(key="refresh_token", path="/auth/refresh")
 
 
 @router.post("/login/dashboard")

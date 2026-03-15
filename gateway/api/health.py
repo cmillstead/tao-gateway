@@ -133,7 +133,7 @@ async def health_check(
         logger.warning("health_check_redis_failed")
     else:
         try:
-            await redis.ping()  # type: ignore[misc]
+            await redis.ping()
         except Exception:
             redis_status = "unhealthy"
             logger.warning("health_check_redis_failed")

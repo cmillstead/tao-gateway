@@ -2,6 +2,7 @@ import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from typing import Literal
 
 import structlog
@@ -25,6 +26,12 @@ _REVOCATION_TOMBSTONE_TTL = 120
 # to prevent stale cached keys from being served after revocation.
 API_KEY_CACHE_TTL = 60
 assert _REVOCATION_TOMBSTONE_TTL >= API_KEY_CACHE_TTL
+
+
+def _cache_key_for_prefix(prefix: str) -> tuple[str, str]:
+    """Return (cache_key, tombstone_key) using hashed prefix (SEC-016)."""
+    h = sha256(prefix.encode()).hexdigest()[:16]
+    return f"api_key:{h}", f"api_key_revoked:{h}"
 
 
 def generate_api_key(env: Environment = "live") -> tuple[str, str, str]:
@@ -140,8 +147,7 @@ async def revoke_api_key(
 
     # Best-effort cache invalidation — revocation is DB-authoritative.
     if redis is not None:
-        cache_key = f"api_key:{key.prefix}"
-        tombstone_key = f"api_key_revoked:{key.prefix}"
+        cache_key, tombstone_key = _cache_key_for_prefix(key.prefix)
         try:
             async with redis.pipeline(transaction=True) as pipe:
                 pipe.set(tombstone_key, "1", ex=_REVOCATION_TOMBSTONE_TTL)
@@ -197,8 +203,7 @@ async def rotate_api_key(
 
     # Best-effort cache invalidation for old key
     if redis is not None:
-        cache_key = f"api_key:{old_key.prefix}"
-        tombstone_key = f"api_key_revoked:{old_key.prefix}"
+        cache_key, tombstone_key = _cache_key_for_prefix(old_key.prefix)
         try:
             async with redis.pipeline(transaction=True) as pipe:
                 pipe.set(tombstone_key, "1", ex=_REVOCATION_TOMBSTONE_TTL)

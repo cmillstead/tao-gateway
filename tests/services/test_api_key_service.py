@@ -128,12 +128,13 @@ async def test_revoke_api_key_sets_tombstone() -> None:
         assert revoked is not None
         assert revoked.is_active is False
 
-        # Tombstone exists in real Redis
-        tombstone_key = f"api_key_revoked:{api_key.prefix}"
+        # Tombstone exists in real Redis (prefix is hashed for SEC-016)
+        from gateway.services.api_key_service import _cache_key_for_prefix
+
+        cache_key, tombstone_key = _cache_key_for_prefix(api_key.prefix)
         assert await redis.exists(tombstone_key)
 
         # Cache entry deleted
-        cache_key = f"api_key:{api_key.prefix}"
         assert not await redis.exists(cache_key)
 
 
