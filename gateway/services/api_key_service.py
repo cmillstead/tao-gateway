@@ -244,7 +244,7 @@ async def update_api_key(
 
     # Invalidate Redis cache so next auth picks up the change
     if redis is not None:
-        cache_key = f"api_key:{key.prefix}"
+        cache_key, _ = _cache_key_for_prefix(key.prefix)
         try:
             await redis.delete(cache_key)
         except Exception:

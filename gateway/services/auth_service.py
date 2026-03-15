@@ -40,7 +40,8 @@ async def signup(email: str, password: str, db: AsyncSession) -> Organization:
     return org
 
 
-async def login(email: str, password: str, db: AsyncSession) -> str:
+async def _verify_credentials(email: str, password: str, db: AsyncSession) -> Organization:
+    """Verify email+password and return the org. Raises AuthenticationError on failure."""
     email = email.lower().strip()
     org = await db.scalar(select(Organization).where(Organization.email == email))
     if org is None:
@@ -56,7 +57,11 @@ async def login(email: str, password: str, db: AsyncSession) -> str:
 
     # Best-effort rehash — don't fail login if this errors
     await try_rehash(db, org, "password_hash", password)
+    return org
 
+
+async def login(email: str, password: str, db: AsyncSession) -> str:
+    org = await _verify_credentials(email, password, db)
     return create_jwt_token(str(org.id))
 
 
@@ -64,19 +69,7 @@ async def login_with_org_id(
     email: str, password: str, db: AsyncSession
 ) -> tuple[str, str]:
     """Login and return (jwt_token, org_id) — avoids decode round-trip."""
-    email = email.lower().strip()
-    org = await db.scalar(select(Organization).where(Organization.email == email))
-    if org is None:
-        with contextlib.suppress(VerifyMismatchError):
-            ph.verify(_DUMMY_HASH, password)
-        raise AuthenticationError("Invalid credentials")
-    try:
-        ph.verify(org.password_hash, password)
-    except VerifyMismatchError as exc:
-        raise AuthenticationError("Invalid credentials") from exc
-
-    await try_rehash(db, org, "password_hash", password)
-
+    org = await _verify_credentials(email, password, db)
     org_id = str(org.id)
     return create_jwt_token(org_id), org_id
 

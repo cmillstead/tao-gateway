@@ -258,13 +258,15 @@ async def get_developer_metrics(
         .offset(offset)
     )).all()
 
-    # Batch: last active + total requests per org
+    # Batch: last active + total requests — scoped to paginated org IDs (CODE-005)
+    org_ids = [org.id for org in orgs]
     usage_agg_rows = (await db.execute(
         select(
             UsageRecord.org_id,
             func.max(UsageRecord.created_at).label("last_active"),
             func.count().label("total_requests"),
         )
+        .where(UsageRecord.org_id.in_(org_ids))
         .group_by(UsageRecord.org_id)
     )).all()
     usage_agg = {
@@ -272,13 +274,14 @@ async def get_developer_metrics(
         for row in usage_agg_rows
     }
 
-    # Batch: per-subnet request counts per org
+    # Batch: per-subnet request counts — scoped to paginated org IDs (CODE-005)
     subnet_agg_rows = (await db.execute(
         select(
             UsageRecord.org_id,
             UsageRecord.subnet_name,
             func.count().label("req_count"),
         )
+        .where(UsageRecord.org_id.in_(org_ids))
         .group_by(UsageRecord.org_id, UsageRecord.subnet_name)
     )).all()
     subnet_agg: dict[Any, dict[str, int]] = {}
