@@ -188,7 +188,7 @@ async def me(
     if org is None:
         raise AuthenticationError("Not authenticated")
 
-    return JSONResponse(content={"id": str(org.id), "email": org.email})
+    return JSONResponse(content={"id": str(org.id), "email": org.email, "is_admin": org.is_admin})
 
 
 @router.post("/logout")
