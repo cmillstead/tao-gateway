@@ -12,6 +12,7 @@ export function DashboardLayout() {
   const navigate = useNavigate();
 
   const userEmail = user?.email ?? "";
+  const isAdmin = user?.is_admin ?? false;
 
   async function handleSignOut() {
     await logout();
@@ -34,6 +35,7 @@ export function DashboardLayout() {
           collapsed={false}
           onSignOut={handleSignOut}
           userEmail={userEmail}
+          isAdmin={isAdmin}
         />
       </div>
 
@@ -43,6 +45,7 @@ export function DashboardLayout() {
           collapsed={true}
           onSignOut={handleSignOut}
           userEmail={userEmail}
+          isAdmin={isAdmin}
         />
       </div>
 
@@ -56,6 +59,7 @@ export function DashboardLayout() {
               handleSignOut();
             }}
             userEmail={userEmail}
+            isAdmin={isAdmin}
           />
         </SheetContent>
       </Sheet>

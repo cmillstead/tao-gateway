@@ -196,6 +196,41 @@ async def test_auth_me_returns_user_info(
     data = resp.json()
     assert data["email"] == registered_user["email"]
     assert data["id"]  # non-empty UUID string
+    assert data["is_admin"] is False  # regular users are not admin
+
+
+async def test_auth_me_returns_is_admin_true_for_admin(
+    client: AsyncClient,
+) -> None:
+    """GET /auth/me returns is_admin=True for admin users."""
+    from sqlalchemy import update
+
+    from gateway.core.database import get_session_factory
+    from gateway.models.organization import Organization
+
+    # Create user and login
+    email = f"admin-me-{uuid.uuid4().hex[:8]}@example.com"
+    password = "test-password-123"
+    resp = await client.post("/auth/signup", json={"email": email, "password": password})
+    assert resp.status_code == 201
+
+    # Promote to admin directly in DB
+    async with get_session_factory()() as db:
+        await db.execute(
+            update(Organization).where(Organization.email == email).values(is_admin=True)
+        )
+        await db.commit()
+
+    creds = {"email": email, "password": password}
+    login_resp = await client.post("/auth/login/dashboard", json=creds)
+    access_token = login_resp.cookies["access_token"]
+
+    resp = await client.get(
+        "/auth/me", cookies={"access_token": access_token}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_admin"] is True
 
 
 async def test_auth_me_unauthenticated(client: AsyncClient) -> None:

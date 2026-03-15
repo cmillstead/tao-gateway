@@ -12,6 +12,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      "/admin": "http://localhost:8000",
       "/auth": "http://localhost:8000",
       "/dashboard": "http://localhost:8000",
       "/v1": "http://localhost:8000",

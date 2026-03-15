@@ -4,6 +4,7 @@ import type { components } from "@/api/schema";
 export interface User {
   id: string;
   email: string;
+  is_admin: boolean;
 }
 
 export interface AuthState {

@@ -6,6 +6,10 @@ import {
   Settings,
   ExternalLink,
   LogOut,
+  Shield,
+  Network,
+  Users,
+  Cpu,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -14,6 +18,7 @@ interface SidebarProps {
   collapsed: boolean;
   onSignOut: () => void | Promise<void>;
   userEmail: string;
+  isAdmin?: boolean;
 }
 
 const navItems = [
@@ -22,7 +27,14 @@ const navItems = [
   { to: "/dashboard/usage", icon: BarChart3, label: "Usage" },
 ];
 
-export function Sidebar({ collapsed, onSignOut, userEmail }: SidebarProps) {
+const adminNavItems = [
+  { to: "/dashboard/admin", icon: Shield, label: "System Health" },
+  { to: "/dashboard/admin/metagraph", icon: Network, label: "Metagraph" },
+  { to: "/dashboard/admin/developers", icon: Users, label: "Developers" },
+  { to: "/dashboard/admin/miners", icon: Cpu, label: "Miners" },
+];
+
+export function Sidebar({ collapsed, onSignOut, userEmail, isAdmin }: SidebarProps) {
   return (
     <nav
       aria-label="Main navigation"
@@ -89,6 +101,42 @@ export function Sidebar({ collapsed, onSignOut, userEmail }: SidebarProps) {
             </NavLink>
           </li>
         </ul>
+
+        {isAdmin && (
+          <>
+            <Separator className="my-3" />
+
+            {/* Admin section */}
+            {!collapsed && (
+              <p className="px-3 pb-1 text-xs font-medium uppercase text-muted-foreground">
+                Admin
+              </p>
+            )}
+            <ul className="flex flex-col gap-1" aria-label="Admin navigation">
+              {adminNavItems.map(({ to, icon: Icon, label }) => (
+                <li key={to}>
+                  <NavLink
+                    to={to}
+                    end={to === "/dashboard/admin"}
+                    title={collapsed ? label : undefined}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                        collapsed && "justify-center px-2",
+                        isActive
+                          ? "bg-primary/5 text-primary"
+                          : "text-muted-foreground hover:bg-elevated hover:text-foreground",
+                      )
+                    }
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!collapsed && <span>{label}</span>}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
 
         <Separator className="my-3" />
 

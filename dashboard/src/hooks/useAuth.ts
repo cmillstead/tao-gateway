@@ -9,7 +9,7 @@ import {
 import type { ReactNode } from "react";
 import client from "@/api/client";
 import { extractErrorMessage } from "@/api/errors";
-import type { AuthState, User } from "@/types";
+import type { AuthState } from "@/types";
 
 interface AuthContextValue extends AuthState {
   login: (req: { email: string; password: string }) => Promise<void>;
@@ -32,9 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { data, error } = await client.GET("/auth/me");
         if (!error && data) {
-          const user = data as { id: string; email: string };
+          const user = data as { id: string; email: string; is_admin: boolean };
           setState({
-            user: { id: user.id, email: user.email },
+            user: { id: user.id, email: user.email, is_admin: user.is_admin ?? false },
             isAuthenticated: true,
             isLoading: false,
           });
@@ -57,8 +57,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(extractErrorMessage(error, "Invalid email or password"));
     }
 
-    const user: User = { id: "", email: req.email };
-    setState({ user, isAuthenticated: true, isLoading: false });
+    // Fetch full user profile (including is_admin) after login
+    const { data: meData } = await client.GET("/auth/me");
+    if (meData) {
+      const me = meData as { id: string; email: string; is_admin: boolean };
+      setState({
+        user: { id: me.id, email: me.email, is_admin: me.is_admin ?? false },
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    } else {
+      setState({
+        user: { id: "", email: req.email, is_admin: false },
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    }
   }, []);
 
   const signup = useCallback(
