@@ -1,4 +1,8 @@
-"""Tests for MinerSelector — selection by incentive, filtering, edge cases."""
+"""Tests for MinerSelector — selection by incentive, filtering, edge cases.
+
+Uses real MetagraphManager (not mocked). Only metagraph objects are mocked
+since they are Bittensor SDK data structures.
+"""
 
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
@@ -7,19 +11,23 @@ import numpy as np
 import pytest
 
 from gateway.core.exceptions import SubnetUnavailableError
-from gateway.routing.metagraph_sync import MetagraphManager, SubnetMetagraphState
+from gateway.routing.metagraph_sync import MetagraphManager
 from gateway.routing.scorer import MinerScorer, ScoreObservation
 from gateway.routing.selector import MinerSelector
 
+_NETUID = 1
 
-def _make_manager(metagraph: MagicMock | None) -> MagicMock:
-    """Create a mock MetagraphManager that returns the given metagraph via get_state."""
-    mgr = MagicMock(spec=MetagraphManager)
-    if metagraph is None:
-        mgr.get_state.return_value = None
-    else:
-        state = SubnetMetagraphState(netuid=1, metagraph=metagraph, sync_generation=1)
-        mgr.get_state.return_value = state
+
+def _make_manager(metagraph: MagicMock | None) -> MetagraphManager:
+    """Create a real MetagraphManager with the given metagraph set on subnet state."""
+    mock_subtensor = MagicMock()
+    mgr = MetagraphManager(subtensor=mock_subtensor, sync_interval=120)
+    mgr.register_subnet(_NETUID)
+    if metagraph is not None:
+        state = mgr.get_state(_NETUID)
+        assert state is not None
+        state.metagraph = metagraph
+        state.sync_generation = 1
     return mgr
 
 
@@ -183,7 +191,6 @@ class TestMinerSelector:
 
     def test_cache_invalidated_on_new_generation(self) -> None:
         """Cache should miss when sync_generation changes."""
-        # Use a single eligible miner so selection is deterministic
         metagraph = MagicMock()
         metagraph.n = 2
         metagraph.incentive = np.array([0.5, 0.0])
@@ -192,12 +199,12 @@ class TestMinerSelector:
             MagicMock(ip="1.2.3.4", port=8091),
             MagicMock(ip="5.6.7.8", port=8091),
         ]
-        state = SubnetMetagraphState(netuid=1, metagraph=metagraph, sync_generation=1)
-        mgr = MagicMock(spec=MetagraphManager)
-        mgr.get_state.return_value = state
+        mgr = _make_manager(metagraph)
+        state = mgr.get_state(_NETUID)
+        assert state is not None
 
         selector = MinerSelector(mgr)
-        axon1 = selector.select_miner(1)
+        axon1 = selector.select_miner(_NETUID)
         assert axon1 is metagraph.axons[0]
 
         # Simulate a new sync — new metagraph with only UID 1 eligible
@@ -212,7 +219,7 @@ class TestMinerSelector:
         state.metagraph = new_metagraph
         state.sync_generation = 2
 
-        axon2 = selector.select_miner(1)
+        axon2 = selector.select_miner(_NETUID)
         assert axon2 is new_metagraph.axons[1]
 
 
