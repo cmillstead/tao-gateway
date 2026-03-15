@@ -1,7 +1,7 @@
 """Multi-window per-key×per-subnet rate limiter.
 
 Enforces three time windows (minute/day/month) per API key per subnet
-using an atomic Redis Lua script. Falls open when Redis is unavailable.
+using an atomic Redis Lua script. Fails closed when Redis is unavailable.
 """
 
 from __future__ import annotations
@@ -133,7 +133,7 @@ async def check_rate_limit(
 ) -> RateLimitResult:
     """Check rate limits across three time windows.
 
-    Falls open (allows request) when Redis is unavailable.
+    Fails closed (rejects request) when Redis is unavailable.
     """
     now = int(time.time())
 
@@ -200,26 +200,14 @@ async def check_rate_limit(
             retry_after=retry_after,
         )
 
-    except Exception:
+    except Exception as exc:
         logger.warning("rate_limit_redis_unavailable", key_id=key_id, subnet_id=subnet_id)
         await reset_redis()
-        # Fail open: allow the request
-        return RateLimitResult(
-            allowed=True,
-            minute_count=0,
-            minute_remaining=limits["minute"],
-            minute_reset=now + MINUTE_WINDOW,
-            day_count=0,
-            day_remaining=limits["day"],
-            day_reset=now + DAY_WINDOW,
-            month_count=0,
-            month_remaining=limits["month"],
-            month_reset=now + MONTH_WINDOW,
-            limit=limits["minute"],
-            remaining=limits["minute"],
-            reset=now + MINUTE_WINDOW,
-            retry_after=0,
-        )
+        # Fail closed: reject the request when Redis is unavailable
+        raise RateLimitExceededError(
+            message="Rate limiting temporarily unavailable. Please retry.",
+            retry_after=5,
+        ) from exc
 
 
 async def enforce_rate_limit(key_id: str, netuid: int, subnet_name: str) -> RateLimitResult:

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from gateway.core.logging import redact_string_value
 from gateway.models.debug_log import DebugLog
 from gateway.models.usage_record import UsageRecord
 
@@ -29,9 +30,11 @@ MAX_DEBUG_CONTENT_SIZE = 65_536
 
 
 def _truncate_content(content: str | None) -> str | None:
-    """Truncate content to MAX_DEBUG_CONTENT_SIZE if needed."""
+    """Redact sensitive patterns and truncate content."""
     if content is None:
         return None
+    # Redact embedded credentials/tokens before storage (SEC-011)
+    content = redact_string_value(content)
     if len(content) <= MAX_DEBUG_CONTENT_SIZE:
         return content
     logger.warning(

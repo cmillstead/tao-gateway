@@ -214,7 +214,9 @@ async def get_system_metrics(
     )
 
 
-async def get_developer_metrics(db: AsyncSession) -> DeveloperMetrics:
+async def get_developer_metrics(
+    db: AsyncSession, *, limit: int = 50, offset: int = 0
+) -> DeveloperMetrics:
     """Query cross-org developer signup and activity metrics."""
     now = datetime.now(UTC)
     today = now.date()
@@ -248,10 +250,12 @@ async def get_developer_metrics(db: AsyncSession) -> DeveloperMetrics:
     )
     weekly_active_developers = active_count or 0
 
-    # Per-developer summary — single aggregated query to avoid N+1
+    # Per-developer summary — paginated to avoid unbounded response (SEC-009)
     orgs = (await db.execute(
         select(Organization.id, Organization.email, Organization.created_at)
         .order_by(Organization.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )).all()
 
     # Batch: last active + total requests per org

@@ -1,5 +1,6 @@
 import uuid
 from dataclasses import dataclass
+from hashlib import sha256
 
 import structlog
 from argon2.exceptions import VerifyMismatchError
@@ -46,10 +47,12 @@ async def get_current_api_key(
     token = credentials.credentials
     prefix = token[:API_KEY_PREFIX_LENGTH]
     redacted = prefix[:12] + "****"
-    cache_key = f"api_key:{prefix}"
+    # Hash the prefix for the Redis key to avoid exposing raw prefixes (SEC-016)
+    prefix_hash = sha256(prefix.encode()).hexdigest()[:16]
+    cache_key = f"api_key:{prefix_hash}"
 
     redis = await try_get_redis(reset_on_failure=True)
-    tombstone_key = f"api_key_revoked:{prefix}"
+    tombstone_key = f"api_key_revoked:{prefix_hash}"
 
     # Check Redis cache (tombstone + cached credentials)
     if redis is not None:
@@ -77,16 +80,19 @@ async def get_current_api_key(
                 await redis.delete(cache_key)
                 cached_str = None
 
-            # Cache stores key_hash:key_id:org_id:debug_mode — always verify hash even on hit
+            # Cache stores hmac:key_id:org_id:debug_mode — verify HMAC on hit (SEC-002)
             if cached_str is not None:
                 try:
                     parts = cached_str.split(":")
                     if len(parts) >= 3:
-                        cached_hash = parts[0]
+                        cached_hmac = parts[0]
                         key_id_str = parts[1]
                         org_id_str = parts[2]
                         debug_mode = parts[3] == "1" if len(parts) > 3 else False
-                        ph.verify(cached_hash, token)
+                        # Fast HMAC check instead of storing argon2 hash
+                        token_hmac = sha256(token.encode()).hexdigest()
+                        if cached_hmac != token_hmac:
+                            raise VerifyMismatchError()
                         return ApiKeyInfo(
                             key_id=uuid.UUID(key_id_str),
                             org_id=uuid.UUID(org_id_str),
@@ -117,14 +123,13 @@ async def get_current_api_key(
         raise AuthenticationError("Invalid API key") from exc
 
     # Best-effort rehash — don't fail the request if this errors
-    current_hash = key_record.key_hash
     await try_rehash(db, key_record, "key_hash", token)
-    current_hash = key_record.key_hash  # may have been updated by rehash
 
-    # Best-effort cache population
+    # Best-effort cache population — store SHA-256 of token, not argon2 hash (SEC-002)
     debug_flag = "1" if key_record.debug_mode else "0"
     if redis is not None:
-        cache_value = f"{current_hash}:{key_record.id}:{key_record.org_id}:{debug_flag}"
+        token_hmac = sha256(token.encode()).hexdigest()
+        cache_value = f"{token_hmac}:{key_record.id}:{key_record.org_id}:{debug_flag}"
         try:
             await redis.set(cache_key, cache_value, ex=API_KEY_CACHE_TTL)
         except Exception:

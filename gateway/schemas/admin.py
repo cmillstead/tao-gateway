@@ -63,7 +63,7 @@ class DeveloperMetrics(BaseModel):
 
 class MinerInfo(BaseModel):
     miner_uid: int
-    hotkey: str
+    hotkey_prefix: str
     netuid: int
     subnet_name: str
     incentive_score: float

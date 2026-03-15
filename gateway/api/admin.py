@@ -102,10 +102,12 @@ async def get_metagraph(
 
 @router.get("/developers")
 async def get_developers(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     _admin_id: uuid.UUID = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> DeveloperMetrics:
-    return await admin_service.get_developer_metrics(db)
+    return await admin_service.get_developer_metrics(db, limit=limit, offset=offset)
 
 
 @router.get("/miners")
@@ -151,7 +153,7 @@ async def get_miners(
             miners.append(
                 MinerInfo(
                     miner_uid=detail.miner_uid,
-                    hotkey=detail.hotkey,
+                    hotkey_prefix=detail.hotkey[:8],
                     netuid=net,
                     subnet_name=subnet_name,
                     incentive_score=incentive_map.get(detail.miner_uid, 0.0),
