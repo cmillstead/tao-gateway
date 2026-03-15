@@ -50,3 +50,8 @@ class RateLimitExceededError(GatewayError):
 class AuthenticationError(GatewayError):
     def __init__(self, message: str = "Authentication failed") -> None:
         super().__init__(message, 401, "authentication_error")
+
+
+class AuthorizationError(GatewayError):
+    def __init__(self, message: str = "Forbidden") -> None:
+        super().__init__(message, 403, "authorization_error")

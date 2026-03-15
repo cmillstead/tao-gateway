@@ -83,7 +83,7 @@ development_status:
 
   # Epic 6: Operator Administration
   epic-6: in-progress
-  6-1-admin-api-endpoints: ready-for-dev
-  6-2-operator-dashboard-views: backlog
+  6-1-admin-api-endpoints: done
+  6-2-operator-dashboard-views: ready-for-dev
   6-3-production-deployment-pipeline: backlog
   epic-6-retrospective: optional

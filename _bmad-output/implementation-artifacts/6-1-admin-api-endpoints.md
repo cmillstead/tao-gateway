@@ -1,6 +1,6 @@
 # Story 6.1: Admin API Endpoints
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -45,64 +45,64 @@ so that I can monitor gateway operations and respond to issues.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `is_admin` column to Organization model (AC: #5)
-  - [ ] 1.1 Add `is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")` to `Organization` model in `gateway/models/organization.py`
-  - [ ] 1.2 Generate Alembic migration: `uv run alembic revision --autogenerate -m "add is_admin to organizations"`
-  - [ ] 1.3 Run and verify migration: `uv run alembic upgrade head`
+- [x] Task 1: Add `is_admin` column to Organization model (AC: #5)
+  - [x]1.1 Add `is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")` to `Organization` model in `gateway/models/organization.py`
+  - [x]1.2 Generate Alembic migration: `uv run alembic revision --autogenerate -m "add is_admin to organizations"`
+  - [x]1.3 Run and verify migration: `uv run alembic upgrade head`
 
-- [ ] Task 2: Create admin auth dependency (AC: #5, #6)
-  - [ ] 2.1 Create `require_admin` dependency in `gateway/middleware/auth.py` that wraps `get_current_org_id()` and checks `Organization.is_admin == True` in the DB
-  - [ ] 2.2 Return `uuid.UUID` (org_id) on success, raise `AuthorizationError` (403) if not admin
-  - [ ] 2.3 Add `AuthorizationError` to `gateway/core/exceptions.py` if it doesn't exist — a distinct exception from `AuthenticationError` (401 vs 403)
-  - [ ] 2.4 Register `AuthorizationError` → 403 mapping in `gateway/middleware/error_handler.py`
+- [x] Task 2: Create admin auth dependency (AC: #5, #6)
+  - [x]2.1 Create `require_admin` dependency in `gateway/middleware/auth.py` that wraps `get_current_org_id()` and checks `Organization.is_admin == True` in the DB
+  - [x]2.2 Return `uuid.UUID` (org_id) on success, raise `AuthorizationError` (403) if not admin
+  - [x]2.3 Add `AuthorizationError` to `gateway/core/exceptions.py` if it doesn't exist — a distinct exception from `AuthenticationError` (401 vs 403)
+  - [x]2.4 Register `AuthorizationError` → 403 mapping in `gateway/middleware/error_handler.py`
 
-- [ ] Task 3: Create admin Pydantic schemas (AC: #1, #2, #3, #4)
-  - [ ] 3.1 Create `gateway/schemas/admin.py` with the following response models:
-  - [ ] 3.2 `SubnetMetrics`: `subnet_name: str`, `netuid: int`, `request_count: int`, `success_count: int`, `error_count: int`, `error_rate: float`, `avg_latency_ms: float`, `p50_latency_ms: int`, `p95_latency_ms: int`, `p99_latency_ms: int`
-  - [ ] 3.3 `MetricsResponse`: `time_range: str`, `subnets: list[SubnetMetrics]`, `total_requests: int`, `total_errors: int`, `overall_error_rate: float`
-  - [ ] 3.4 `SubnetMetagraphStatus`: `netuid: int`, `subnet_name: str`, `last_sync_time: str | None`, `staleness_seconds: float`, `is_stale: bool`, `sync_status: Literal["healthy", "degraded", "never_synced"]`, `last_sync_error: str | None`, `consecutive_failures: int`, `active_miners: int`
-  - [ ] 3.5 `MetagraphResponse`: `subnets: list[SubnetMetagraphStatus]`
-  - [ ] 3.6 `DeveloperSummary`: `org_id: str`, `email: str`, `signup_date: str`, `last_active: str | None`, `total_requests: int`, `requests_by_subnet: dict[str, int]`
-  - [ ] 3.7 `DeveloperMetrics`: `total_developers: int`, `new_signups_today: int`, `new_signups_this_week: int`, `weekly_active_developers: int`, `developers: list[DeveloperSummary]`
-  - [ ] 3.8 `MinerInfo`: `miner_uid: int`, `hotkey: str`, `netuid: int`, `subnet_name: str`, `incentive_score: float`, `gateway_quality_score: float`, `total_requests: int`, `successful_requests: int`, `avg_latency_ms: float`, `error_rate: float`
-  - [ ] 3.9 `MinerResponse`: `subnets: dict[str, list[MinerInfo]]` — keyed by subnet name
+- [x] Task 3: Create admin Pydantic schemas (AC: #1, #2, #3, #4)
+  - [x]3.1 Create `gateway/schemas/admin.py` with the following response models:
+  - [x]3.2 `SubnetMetrics`: `subnet_name: str`, `netuid: int`, `request_count: int`, `success_count: int`, `error_count: int`, `error_rate: float`, `avg_latency_ms: float`, `p50_latency_ms: int`, `p95_latency_ms: int`, `p99_latency_ms: int`
+  - [x]3.3 `MetricsResponse`: `time_range: str`, `subnets: list[SubnetMetrics]`, `total_requests: int`, `total_errors: int`, `overall_error_rate: float`
+  - [x]3.4 `SubnetMetagraphStatus`: `netuid: int`, `subnet_name: str`, `last_sync_time: str | None`, `staleness_seconds: float`, `is_stale: bool`, `sync_status: Literal["healthy", "degraded", "never_synced"]`, `last_sync_error: str | None`, `consecutive_failures: int`, `active_miners: int`
+  - [x]3.5 `MetagraphResponse`: `subnets: list[SubnetMetagraphStatus]`
+  - [x]3.6 `DeveloperSummary`: `org_id: str`, `email: str`, `signup_date: str`, `last_active: str | None`, `total_requests: int`, `requests_by_subnet: dict[str, int]`
+  - [x]3.7 `DeveloperMetrics`: `total_developers: int`, `new_signups_today: int`, `new_signups_this_week: int`, `weekly_active_developers: int`, `developers: list[DeveloperSummary]`
+  - [x]3.8 `MinerInfo`: `miner_uid: int`, `hotkey: str`, `netuid: int`, `subnet_name: str`, `incentive_score: float`, `gateway_quality_score: float`, `total_requests: int`, `successful_requests: int`, `avg_latency_ms: float`, `error_rate: float`
+  - [x]3.9 `MinerResponse`: `subnets: dict[str, list[MinerInfo]]` — keyed by subnet name
 
-- [ ] Task 4: Create admin service layer (AC: #1, #3)
-  - [ ] 4.1 Create `gateway/services/admin_service.py`
-  - [ ] 4.2 `get_system_metrics(db, time_range)` — cross-org aggregation of usage data:
+- [x] Task 4: Create admin service layer (AC: #1, #3)
+  - [x]4.1 Create `gateway/services/admin_service.py`
+  - [x]4.2 `get_system_metrics(db, time_range)` — cross-org aggregation of usage data:
     - For completed days: query `DailyUsageSummary` without `org_id` filter, grouped by `netuid`/`subnet_name`
     - For today: query `UsageRecord` without `org_id` filter
     - Compute error rates: `error_count / request_count`
     - Time range mapping: `"1h"` → last hour from `UsageRecord`, `"24h"` → today, `"7d"` → last 7 days, `"30d"` → last 30 days
-  - [ ] 4.3 `get_developer_metrics(db)` — query `organizations` table:
+  - [x]4.3 `get_developer_metrics(db)` — query `organizations` table:
     - Total count, new signups today/this week (from `created_at`), weekly active (orgs with any `UsageRecord` in last 7 days)
     - Per-developer: join `Organization` with `UsageRecord` aggregated by `subnet_name`, get `MAX(created_at)` as last active
-  - [ ] 4.4 Note: metagraph and miner data come from `app.state` objects, not the DB, so no service methods needed for those
+  - [x]4.4 Note: metagraph and miner data come from `app.state` objects, not the DB, so no service methods needed for those
 
-- [ ] Task 5: Create admin API endpoints (AC: #1, #2, #3, #4, #6)
-  - [ ] 5.1 Create `gateway/api/admin.py` with `router = APIRouter()`
-  - [ ] 5.2 `GET /admin/metrics` — accepts `time_range: str = Query("24h", pattern="^(1h|24h|7d|30d)$")`. Calls `admin_service.get_system_metrics()`. Returns `MetricsResponse`.
-  - [ ] 5.3 `GET /admin/metagraph` — reads from `request.app.state.metagraph_manager.get_all_states()`. Converts `SubnetMetagraphState` to `SubnetMetagraphStatus` schema. For `active_miners`: count neurons with non-zero incentive from metagraph object. Returns `MetagraphResponse`.
-  - [ ] 5.4 `GET /admin/developers` — calls `admin_service.get_developer_metrics()`. Returns `DeveloperMetrics`.
-  - [ ] 5.5 `GET /admin/miners` — reads live data from `request.app.state.scorer` (in-memory `_MinerState` via the scorer's internal state). Also reads persisted `MinerScore` from DB for historical context. For incentive scores: read from metagraph object via `metagraph_manager`. Returns `MinerResponse`.
-  - [ ] 5.6 All endpoints use `Depends(require_admin)` for auth
-  - [ ] 5.7 Exclude admin router from default OpenAPI schema: use `include_in_schema=False` on the router or individual endpoints
+- [x] Task 5: Create admin API endpoints (AC: #1, #2, #3, #4, #6)
+  - [x]5.1 Create `gateway/api/admin.py` with `router = APIRouter()`
+  - [x]5.2 `GET /admin/metrics` — accepts `time_range: str = Query("24h", pattern="^(1h|24h|7d|30d)$")`. Calls `admin_service.get_system_metrics()`. Returns `MetricsResponse`.
+  - [x]5.3 `GET /admin/metagraph` — reads from `request.app.state.metagraph_manager.get_all_states()`. Converts `SubnetMetagraphState` to `SubnetMetagraphStatus` schema. For `active_miners`: count neurons with non-zero incentive from metagraph object. Returns `MetagraphResponse`.
+  - [x]5.4 `GET /admin/developers` — calls `admin_service.get_developer_metrics()`. Returns `DeveloperMetrics`.
+  - [x]5.5 `GET /admin/miners` — reads live data from `request.app.state.scorer` (in-memory `_MinerState` via the scorer's internal state). Also reads persisted `MinerScore` from DB for historical context. For incentive scores: read from metagraph object via `metagraph_manager`. Returns `MinerResponse`.
+  - [x]5.6 All endpoints use `Depends(require_admin)` for auth
+  - [x]5.7 Exclude admin router from default OpenAPI schema: use `include_in_schema=False` on the router or individual endpoints
 
-- [ ] Task 6: Register admin router (AC: #6)
-  - [ ] 6.1 Import admin router in `gateway/api/router.py`
-  - [ ] 6.2 Add `router.include_router(admin_router, prefix="/admin", tags=["Admin"])` — but with `include_in_schema=False` so admin endpoints are hidden from public `/docs`
+- [x] Task 6: Register admin router (AC: #6)
+  - [x]6.1 Import admin router in `gateway/api/router.py`
+  - [x]6.2 Add `router.include_router(admin_router, prefix="/admin", tags=["Admin"])` — but with `include_in_schema=False` so admin endpoints are hidden from public `/docs`
 
-- [ ] Task 7: Write tests (AC: all)
-  - [ ] 7.1 Test `is_admin` column exists on Organization model and defaults to False
-  - [ ] 7.2 Test `require_admin` dependency: returns org_id for admin user, raises 403 for non-admin, raises 401 for unauthenticated
-  - [ ] 7.3 Test `GET /admin/metrics` returns per-subnet metrics with correct aggregation for each time range
-  - [ ] 7.4 Test `GET /admin/metrics` with different `time_range` query params
-  - [ ] 7.5 Test `GET /admin/metagraph` returns subnet sync status (use mock metagraph manager in app.state)
-  - [ ] 7.6 Test `GET /admin/developers` returns correct signup and activity counts
-  - [ ] 7.7 Test `GET /admin/miners` returns miner quality data (use mock scorer in app.state)
-  - [ ] 7.8 Test all admin endpoints return 401 without auth and 403 for non-admin users
-  - [ ] 7.9 Test admin endpoints are NOT included in OpenAPI schema (`GET /openapi.json` should not contain `/admin/*` paths)
-  - [ ] 7.10 Verify all existing tests still pass: `uv run pytest --tb=short -q`
+- [x] Task 7: Write tests (AC: all)
+  - [x]7.1 Test `is_admin` column exists on Organization model and defaults to False
+  - [x]7.2 Test `require_admin` dependency: returns org_id for admin user, raises 403 for non-admin, raises 401 for unauthenticated
+  - [x]7.3 Test `GET /admin/metrics` returns per-subnet metrics with correct aggregation for each time range
+  - [x]7.4 Test `GET /admin/metrics` with different `time_range` query params
+  - [x]7.5 Test `GET /admin/metagraph` returns subnet sync status (use mock metagraph manager in app.state)
+  - [x]7.6 Test `GET /admin/developers` returns correct signup and activity counts
+  - [x]7.7 Test `GET /admin/miners` returns miner quality data (use mock scorer in app.state)
+  - [x]7.8 Test all admin endpoints return 401 without auth and 403 for non-admin users
+  - [x]7.9 Test admin endpoints are NOT included in OpenAPI schema (`GET /openapi.json` should not contain `/admin/*` paths)
+  - [x]7.10 Verify all existing tests still pass: `uv run pytest --tb=short -q`
 
 ## Dev Notes
 
@@ -393,10 +393,38 @@ gateway/
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (1M context)
 
 ### Debug Log References
 
 ### Completion Notes List
 
+- All 7 tasks completed: is_admin column, admin auth dependency, schemas, service layer, API endpoints, router registration, tests
+- 17 new admin tests + 1 updated model test = 571 total tests passing
+- Alembic migration generated for is_admin column
+- Added `get_miner_details()` method to MinerScorer for non-destructive read of miner data
+- Admin endpoints hidden from OpenAPI schema via `include_in_schema=False`
+- AuthorizationError (403) added to exception hierarchy
+- Linter (ruff) and type checker (mypy) pass clean
+
+### Change Log
+
+- 2026-03-14: Story 6.1 implemented — admin API endpoints for system metrics, metagraph status, developer activity, and miner quality
+- 2026-03-14: Code review fixes — N+1 query eliminated in developer metrics (H1), float("inf") staleness fixed (H2), sync error sanitized (M1), added unit tests for get_miner_details (M2), added multi-subnet + netuid filter tests (M3/L3), consolidated TYPE_CHECKING blocks + removed unused logger (L1/L2)
+
 ### File List
+
+New files:
+- gateway/api/admin.py
+- gateway/schemas/admin.py
+- gateway/services/admin_service.py
+- migrations/versions/3a75e60c89a1_add_is_admin_to_organizations.py
+- tests/api/test_admin.py
+
+Modified files:
+- gateway/models/organization.py (added is_admin column)
+- gateway/middleware/auth.py (added require_admin dependency, AuthorizationError import)
+- gateway/core/exceptions.py (added AuthorizationError class)
+- gateway/api/router.py (registered admin router with include_in_schema=False)
+- gateway/routing/scorer.py (added get_miner_details method)
+- tests/models/test_models.py (updated organization columns assertion)
