@@ -3,6 +3,7 @@ import { MetricCard } from "@/components/overview/MetricCard";
 import { CapabilitiesCard } from "@/components/overview/CapabilitiesCard";
 import { RateLimitsCard } from "@/components/overview/RateLimitsCard";
 import { QuickstartPanel } from "@/components/overview/QuickstartPanel";
+import { QuotaSummaryCard } from "@/components/overview/QuotaSummaryCard";
 
 export function Dashboard() {
   const { data, isLoading, error } = useOverview();
@@ -60,6 +61,8 @@ export function Dashboard() {
           <CapabilitiesCard subnets={data.subnets} />
 
           <QuickstartPanel apiKeyPrefix={data.first_api_key_prefix} />
+
+          <QuotaSummaryCard />
 
           <RateLimitsCard subnets={data.subnets} />
         </div>
