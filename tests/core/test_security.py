@@ -1,7 +1,6 @@
 """Tests for gateway.core.security — try_rehash."""
 
 import pytest
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.database import get_db
