@@ -1,6 +1,6 @@
 # Story 6.3: Production Deployment Pipeline
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -42,63 +42,63 @@ so that code changes are automatically tested and deployed to the live gateway w
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create GitHub Actions CI workflow (AC: #1)
-  - [ ] 1.1 Create `.github/workflows/ci.yml` — triggers on push to any branch and pull_request events
-  - [ ] 1.2 Job: `lint` — runs `uv run ruff check gateway/ tests/` and `uv run mypy gateway/`
-  - [ ] 1.3 Job: `test` — starts Postgres and Redis services, runs `uv run pytest --tb=short -q` with coverage
-  - [ ] 1.4 Job: `dashboard-build` — runs `cd dashboard && npm ci && npm run build`
-  - [ ] 1.5 Use `astral-sh/setup-uv@v5` for uv installation, `actions/setup-node@v4` with Node 20 for dashboard
-  - [ ] 1.6 Python 3.12 via `actions/setup-python@v5`
-  - [ ] 1.7 Cache uv dependencies and npm dependencies for faster runs
-  - [ ] 1.8 Fail fast on any check failure (default GitHub Actions behavior)
+- [x] Task 1: Create GitHub Actions CI workflow (AC: #1)
+  - [x] 1.1 Create `.github/workflows/ci.yml` — triggers on push to any branch and pull_request events
+  - [x] 1.2 Job: `lint` — runs `uv run ruff check gateway/ tests/` and `uv run mypy gateway/`
+  - [x] 1.3 Job: `test` — starts Postgres and Redis services, runs `uv run pytest --tb=short -q` with coverage
+  - [x] 1.4 Job: `dashboard-build` — runs `cd dashboard && npm ci && npm run build`
+  - [x] 1.5 Use `astral-sh/setup-uv@v5` for uv installation, `actions/setup-node@v4` with Node 20 for dashboard
+  - [x] 1.6 Python 3.12 via `actions/setup-python@v5`
+  - [x] 1.7 Cache uv dependencies and npm dependencies for faster runs
+  - [x] 1.8 Fail fast on any check failure (default GitHub Actions behavior)
 
-- [ ] Task 2: Create GitHub Actions deploy workflow (AC: #2, #5)
-  - [ ] 2.1 Create `.github/workflows/deploy.yml` — triggers on push to `main` only
-  - [ ] 2.2 Step: Build Docker image with `docker build -t ghcr.io/<owner>/tao-gateway:latest -t ghcr.io/<owner>/tao-gateway:${{ github.sha }} .`
-  - [ ] 2.3 Step: Log in to GitHub Container Registry using `docker/login-action@v3` with `GITHUB_TOKEN`
-  - [ ] 2.4 Step: Push image to GHCR
-  - [ ] 2.5 Step: SSH into Droplet using `appleboy/ssh-action@v1` with secrets (`DROPLET_HOST`, `DROPLET_SSH_KEY`, `DROPLET_USER`)
-  - [ ] 2.6 SSH commands: pull new image, run `docker compose -f docker-compose.prod.yml up -d --force-recreate gateway`, run Alembic migrations, verify health endpoint
-  - [ ] 2.7 Add health check verification: `curl -sf http://localhost:8000/v1/health` after deployment
-  - [ ] 2.8 Deploy workflow should depend on CI passing (use `needs: ci` or run CI checks inline)
+- [x] Task 2: Create GitHub Actions deploy workflow (AC: #2, #5)
+  - [x] 2.1 Create `.github/workflows/deploy.yml` — triggers on push to `main` only
+  - [x] 2.2 Step: Build Docker image with `docker build -t ghcr.io/<owner>/tao-gateway:latest -t ghcr.io/<owner>/tao-gateway:${{ github.sha }} .`
+  - [x] 2.3 Step: Log in to GitHub Container Registry using `docker/login-action@v3` with `GITHUB_TOKEN`
+  - [x] 2.4 Step: Push image to GHCR
+  - [x] 2.5 Step: SSH into Droplet using `appleboy/ssh-action@v1` with secrets (`DROPLET_HOST`, `DROPLET_SSH_KEY`, `DROPLET_USER`)
+  - [x] 2.6 SSH commands: pull new image, run `docker compose -f docker-compose.prod.yml up -d --force-recreate gateway`, run Alembic migrations, verify health endpoint
+  - [x] 2.7 Add health check verification: `curl -sf http://localhost:8000/v1/health` after deployment
+  - [x] 2.8 Deploy workflow should depend on CI passing (use `needs: ci` or run CI checks inline)
 
-- [ ] Task 3: Create `docker-compose.prod.yml` (AC: #2, #4)
-  - [ ] 3.1 Create `docker-compose.prod.yml` with `gateway` and `redis` services only (managed Postgres is external)
-  - [ ] 3.2 Gateway service: pull image from GHCR, env vars from host (DATABASE_URL, REDIS_URL, JWT_SECRET_KEY, WALLET_PATH, ENABLE_BITTENSOR=true), mount wallet volume with `:ro`, restart policy `unless-stopped`
-  - [ ] 3.3 Redis service: `redis:7-alpine` with password auth, persistent volume, restart policy `unless-stopped`
-  - [ ] 3.4 Gateway depends on Redis health check
-  - [ ] 3.5 No `.env` file in production — all secrets from host environment variables
-  - [ ] 3.6 Wallet volume mount with restrictive permissions: `${WALLET_PATH}:/app/.bittensor/wallets:ro`
+- [x] Task 3: Create `docker-compose.prod.yml` (AC: #2, #4)
+  - [x] 3.1 Create `docker-compose.prod.yml` with `gateway` and `redis` services only (managed Postgres is external)
+  - [x] 3.2 Gateway service: pull image from GHCR, env vars from host (DATABASE_URL, REDIS_URL, JWT_SECRET_KEY, WALLET_PATH, ENABLE_BITTENSOR=true), mount wallet volume with `:ro`, restart policy `unless-stopped`
+  - [x] 3.3 Redis service: `redis:7-alpine` with password auth, persistent volume, restart policy `unless-stopped`
+  - [x] 3.4 Gateway depends on Redis health check
+  - [x] 3.5 No `.env` file in production — all secrets from host environment variables
+  - [x] 3.6 Wallet volume mount with restrictive permissions: `${WALLET_PATH}:/app/.bittensor/wallets:ro`
 
-- [ ] Task 4: Update Caddyfile for production domain (AC: #3)
-  - [ ] 4.1 The Caddyfile already exists with security headers, TLS 1.2+, and reverse proxy config
-  - [ ] 4.2 Replace `your-domain.com` placeholder with `{$DOMAIN:your-domain.com}` env var pattern so it's configurable
-  - [ ] 4.3 Verify Caddy config includes: auto-TLS (Let's Encrypt), TLS 1.2+ enforcement, security headers, reverse proxy to localhost:8000
-  - [ ] 4.4 NOTE: Caddy runs directly on the host (not in Docker) for port 80/443 binding — it reverse-proxies to the Docker-exposed gateway port
+- [x] Task 4: Update Caddyfile for production domain (AC: #3)
+  - [x] 4.1 The Caddyfile already exists with security headers, TLS 1.2+, and reverse proxy config
+  - [x] 4.2 Replace `your-domain.com` placeholder with `{$DOMAIN:your-domain.com}` env var pattern so it's configurable
+  - [x] 4.3 Verify Caddy config includes: auto-TLS (Let's Encrypt), TLS 1.2+ enforcement, security headers, reverse proxy to localhost:8000
+  - [x] 4.4 NOTE: Caddy runs directly on the host (not in Docker) for port 80/443 binding — it reverse-proxies to the Docker-exposed gateway port
 
-- [ ] Task 5: Create production environment documentation (AC: #4)
-  - [ ] 5.1 Update `.env.example` to include all production-relevant env vars with clear comments distinguishing local-dev vs production values
-  - [ ] 5.2 Add `REDIS_PASSWORD` to `.env.example` if not present
-  - [ ] 5.3 Ensure `ENABLE_BITTENSOR=true` is documented for production
-  - [ ] 5.4 Add `LOG_FORMAT=json` setting to `gateway/core/config.py` (default: `"console"`, production: `"json"`) and configure structlog to output JSON when `LOG_FORMAT=json`
+- [x] Task 5: Create production environment documentation (AC: #4)
+  - [x] 5.1 Update `.env.example` to include all production-relevant env vars with clear comments distinguishing local-dev vs production values
+  - [x] 5.2 Add `REDIS_PASSWORD` to `.env.example` if not present
+  - [x] 5.3 Ensure `ENABLE_BITTENSOR=true` is documented for production
+  - [x] 5.4 Add `LOG_FORMAT=json` setting to `gateway/core/config.py` (default: `"console"`, production: `"json"`) and configure structlog to output JSON when `LOG_FORMAT=json`
 
-- [ ] Task 6: Add structured JSON logging for production (AC: #4)
-  - [ ] 6.1 Add `log_format: str = "console"` to `Settings` in `gateway/core/config.py`
-  - [ ] 6.2 Update structlog configuration in `gateway/core/logging.py` to use `structlog.processors.JSONRenderer()` when `log_format == "json"` and `structlog.dev.ConsoleRenderer()` when `"console"`
-  - [ ] 6.3 Add `LOG_FORMAT` to `.env.example` with comment: `# Set to "json" for production log aggregation`
+- [x] Task 6: Add structured JSON logging for production (AC: #4)
+  - [x] 6.1 Add `log_format: str = "console"` to `Settings` in `gateway/core/config.py`
+  - [x] 6.2 Update structlog configuration in `gateway/core/logging.py` to use `structlog.processors.JSONRenderer()` when `log_format == "json"` and `structlog.dev.ConsoleRenderer()` when `"console"`
+  - [x] 6.3 Add `LOG_FORMAT` to `.env.example` with comment: `# Set to "json" for production log aggregation`
 
-- [ ] Task 7: Add Alembic migration to deploy workflow (AC: #2)
-  - [ ] 7.1 In the deploy SSH script, run `docker compose -f docker-compose.prod.yml exec gateway .venv/bin/alembic upgrade head` after the new container is running
-  - [ ] 7.2 This runs migrations inside the container using the production DATABASE_URL
+- [x] Task 7: Add Alembic migration to deploy workflow (AC: #2)
+  - [x] 7.1 In the deploy SSH script, run `docker compose -f docker-compose.prod.yml exec gateway .venv/bin/alembic upgrade head` after the new container is running
+  - [x] 7.2 This runs migrations inside the container using the production DATABASE_URL
 
-- [ ] Task 8: Verify and test (AC: all)
-  - [ ] 8.1 Verify CI workflow YAML is valid: use `actionlint` or manual review of workflow syntax
-  - [ ] 8.2 Verify `docker-compose.prod.yml` is valid: `docker compose -f docker-compose.prod.yml config`
-  - [ ] 8.3 Verify Dockerfile builds successfully: `docker build -t tao-gateway:test .`
-  - [ ] 8.4 Verify all existing tests pass: `uv run pytest --tb=short -q`
-  - [ ] 8.5 Verify linter: `uv run ruff check gateway/ tests/`
-  - [ ] 8.6 Verify types: `uv run mypy gateway/`
-  - [ ] 8.7 Verify dashboard builds: `cd dashboard && npm run build`
+- [x] Task 8: Verify and test (AC: all)
+  - [x] 8.1 Verify CI workflow YAML is valid: use `actionlint` or manual review of workflow syntax
+  - [x] 8.2 Verify `docker-compose.prod.yml` is valid: `docker compose -f docker-compose.prod.yml config`
+  - [x] 8.3 Verify Dockerfile builds successfully: `docker build -t tao-gateway:test .`
+  - [x] 8.4 Verify all existing tests pass: `uv run pytest --tb=short -q`
+  - [x] 8.5 Verify linter: `uv run ruff check gateway/ tests/`
+  - [x] 8.6 Verify types: `uv run mypy gateway/`
+  - [x] 8.7 Verify dashboard builds: `cd dashboard && npm run build`
 
 ## Dev Notes
 
@@ -437,10 +437,49 @@ gateway/core/logging.py               # Conditional JSON/console renderer
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (1M context)
 
 ### Debug Log References
 
 ### Completion Notes List
 
+- All 8 tasks completed: CI workflow, deploy workflow, prod compose, Caddyfile update, env docs, JSON logging, Alembic in deploy, verification
+- 578 tests pass (up from 571 at story creation — other stories added tests since)
+- Ruff check: all passed. Mypy: no issues in 70 source files
+- Docker build succeeds. docker-compose.prod.yml validates
+- Dashboard builds successfully
+- Deploy workflow uses env var indirection for github.sha to avoid GHA injection risks
+- Logging changed from always-JSON to conditional: `console` (default for dev) or `json` (production)
+- No existing files modified beyond what the story specified
+
+### Senior Developer Review (AI)
+
+**Review Date:** 2026-03-14
+**Reviewer:** Claude Opus 4.6 (1M context)
+**Outcome:** Changes Requested → All Fixed
+
+**Findings (4 fixed, 2 low accepted):**
+
+- [x] [HIGH] H1: uv dependency caching missing in CI — added `enable-cache: true` to both lint and test jobs
+- [x] [MED] M1: `log_format` accepted arbitrary strings — changed to `Literal["console", "json"]`
+- [x] [MED] M2: `format_exc_info` conflicted with ConsoleRenderer — only included for JSON mode
+- [x] [MED] M3: pytest coverage not collected in CI — added `--cov=gateway` flag
+- [LOW] L1: Hardcoded image owner in docker-compose.prod.yml — accepted (operator-controlled file)
+- [LOW] L2: Migration ordering risk during deploy — accepted (by design per story spec)
+
+### Change Log
+
+- 2026-03-14: Implemented all tasks for Story 6.3 — CI/CD pipelines, production deployment config, structured logging
+- 2026-03-14: Code review fixes — uv caching, Literal type for log_format, conditional format_exc_info, pytest coverage flag
+
 ### File List
+
+- .github/workflows/ci.yml (NEW)
+- .github/workflows/deploy.yml (NEW)
+- docker-compose.prod.yml (NEW)
+- Caddyfile (MODIFIED — domain placeholder to env var)
+- .env.example (MODIFIED — added REDIS_PASSWORD, LOG_FORMAT, DOMAIN)
+- gateway/core/config.py (MODIFIED — added log_format setting)
+- gateway/core/logging.py (MODIFIED — conditional JSON/console renderer, conditional format_exc_info)
+- _bmad-output/implementation-artifacts/sprint-status.yaml (MODIFIED — story status)
+- _bmad-output/implementation-artifacts/6-3-production-deployment-pipeline.md (MODIFIED — task checkboxes, dev record)

@@ -96,15 +96,28 @@ def _redact_sensitive_keys(
 
 
 def setup_logging() -> None:
+    from gateway.core.config import settings
+
+    use_json = settings.log_format == "json"
+
+    processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+    ]
+    # format_exc_info is only needed for JSONRenderer;
+    # ConsoleRenderer handles exception formatting itself.
+    if use_json:
+        processors.append(structlog.processors.format_exc_info)
+    processors.append(_redact_sensitive_keys)
+    processors.append(
+        structlog.processors.JSONRenderer()
+        if use_json
+        else structlog.dev.ConsoleRenderer()
+    )
+
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.format_exc_info,
-            _redact_sensitive_keys,
-            structlog.processors.JSONRenderer(),
-        ],
+        processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
