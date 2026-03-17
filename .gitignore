@@ -47,3 +47,4 @@ wallets/
 
 # uv
 # Note: .python-version is committed to pin Python 3.12 for all developers
+.harness-verified
