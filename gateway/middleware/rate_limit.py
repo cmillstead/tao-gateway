@@ -40,6 +40,8 @@ _SUBNET_RATE_LIMITS: dict[int, dict[str, int]] = {
     1: {"minute": 10, "day": 100, "month": 1000},   # SN1
     19: {"minute": 5, "day": 50, "month": 500},      # SN19
     62: {"minute": 10, "day": 100, "month": 1000},   # SN62
+    32: {"minute": 60, "day": 600, "month": 6000},    # SN32 detection
+    22: {"minute": 30, "day": 300, "month": 3000},     # SN22 search
 }
 
 

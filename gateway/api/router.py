@@ -3,24 +3,43 @@ from fastapi import APIRouter
 from gateway.api.admin import router as admin_router
 from gateway.api.api_keys import router as api_keys_router
 from gateway.api.auth import router as auth_router
-from gateway.api.chat import router as chat_router
-from gateway.api.code import router as code_router
 from gateway.api.dashboard import router as dashboard_router
 from gateway.api.health import router as health_router
-from gateway.api.images import router as images_router
 from gateway.api.models import router as models_router
 from gateway.api.usage import router as usage_router
+from gateway.core.config import settings
 
 router = APIRouter()
+
+# Always-on routes
 router.include_router(health_router, tags=["Health"])
 router.include_router(models_router, tags=["Models"])
 router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 router.include_router(api_keys_router, prefix="/dashboard", tags=["API Keys"])
 router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
 router.include_router(usage_router, prefix="/v1", tags=["Usage"])
-router.include_router(chat_router, prefix="/v1", tags=["Chat Completions"])
-router.include_router(images_router, prefix="/v1", tags=["Image Generation"])
-router.include_router(code_router, prefix="/v1", tags=["Code Generation"])
+
+# Subnet-conditional routes — only include if subnet is enabled
+if 1 in settings.enabled_subnets:
+    from gateway.api.chat import router as chat_router
+    router.include_router(chat_router, prefix="/v1", tags=["Chat Completions"])
+
+if 19 in settings.enabled_subnets:
+    from gateway.api.images import router as images_router
+    router.include_router(images_router, prefix="/v1", tags=["Image Generation"])
+
+if 62 in settings.enabled_subnets:
+    from gateway.api.code import router as code_router
+    router.include_router(code_router, prefix="/v1", tags=["Code Generation"])
+
+if 32 in settings.enabled_subnets:
+    from gateway.api.detection import router as detection_router
+    router.include_router(detection_router, prefix="/v1", tags=["AI Detection"])
+
+if 22 in settings.enabled_subnets:
+    from gateway.api.search import router as search_router
+    router.include_router(search_router, prefix="/v1", tags=["Web Search"])
+
 router.include_router(
     admin_router, prefix="/admin", tags=["Admin"], include_in_schema=False
 )
