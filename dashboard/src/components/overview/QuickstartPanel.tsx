@@ -15,29 +15,49 @@ function getKeyPlaceholder(prefix: string | null): string {
   return "<YOUR_API_KEY>";
 }
 
-function getCurlSnippet(keyDisplay: string): string {
-  return `curl -X POST ${API_BASE_URL}/v1/chat/completions \\
+function getDetectionCurlSnippet(keyDisplay: string): string {
+  return `curl -X POST ${API_BASE_URL}/v1/moderations \\
   -H "Authorization: Bearer ${keyDisplay}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "tao-text",
-    "messages": [{"role": "user", "content": "Hello"}]
+    "model": "tao-sn32",
+    "input": ["Is this text written by AI?"]
   }'`;
 }
 
-function getPythonSnippet(keyDisplay: string): string {
-  return `from openai import OpenAI
+function getDetectionPythonSnippet(keyDisplay: string): string {
+  return `import httpx
 
-client = OpenAI(
-    base_url="${API_BASE_URL}/v1",
-    api_key="${keyDisplay}",
+response = httpx.post(
+    "${API_BASE_URL}/v1/moderations",
+    headers={"Authorization": "Bearer ${keyDisplay}"},
+    json={"model": "tao-sn32", "input": ["Is this text written by AI?"]},
 )
+result = response.json()["results"][0]
+print(f"AI generated: {result['flagged']} (score: {result['category_scores']['ai_generated']})")`;
+}
 
-response = client.chat.completions.create(
-    model="tao-text",
-    messages=[{"role": "user", "content": "Hello"}],
+function getSearchCurlSnippet(keyDisplay: string): string {
+  return `curl -X POST ${API_BASE_URL}/v1/search \\
+  -H "Authorization: Bearer ${keyDisplay}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "tao-sn22",
+    "query": "bittensor subnets",
+    "num_results": 5
+  }'`;
+}
+
+function getSearchPythonSnippet(keyDisplay: string): string {
+  return `import httpx
+
+response = httpx.post(
+    "${API_BASE_URL}/v1/search",
+    headers={"Authorization": "Bearer ${keyDisplay}"},
+    json={"model": "tao-sn22", "query": "bittensor subnets", "num_results": 5},
 )
-print(response.choices[0].message.content)`;
+for result in response.json()["results"]:
+    print(f"{result['position']}. {result['title']} — {result['url']}")`;
 }
 
 export function QuickstartPanel({ apiKeyPrefix }: QuickstartPanelProps) {
@@ -75,16 +95,24 @@ export function QuickstartPanel({ apiKeyPrefix }: QuickstartPanelProps) {
         <p className="mb-3 text-sm text-muted-foreground">
           Replace the key prefix below with your full API key (copied at creation time).
         </p>
-        <Tabs defaultValue="curl">
-          <TabsList>
-            <TabsTrigger value="curl">curl</TabsTrigger>
-            <TabsTrigger value="python">Python</TabsTrigger>
+        <Tabs defaultValue="detection-curl">
+          <TabsList className="flex-wrap h-auto gap-1">
+            <TabsTrigger value="detection-curl">Detection (curl)</TabsTrigger>
+            <TabsTrigger value="detection-python">Detection (Python)</TabsTrigger>
+            <TabsTrigger value="search-curl">Search (curl)</TabsTrigger>
+            <TabsTrigger value="search-python">Search (Python)</TabsTrigger>
           </TabsList>
-          <TabsContent value="curl">
-            <CodeSnippet code={getCurlSnippet(keyDisplay)} language="bash" />
+          <TabsContent value="detection-curl">
+            <CodeSnippet code={getDetectionCurlSnippet(keyDisplay)} language="bash" />
           </TabsContent>
-          <TabsContent value="python">
-            <CodeSnippet code={getPythonSnippet(keyDisplay)} language="python" />
+          <TabsContent value="detection-python">
+            <CodeSnippet code={getDetectionPythonSnippet(keyDisplay)} language="python" />
+          </TabsContent>
+          <TabsContent value="search-curl">
+            <CodeSnippet code={getSearchCurlSnippet(keyDisplay)} language="bash" />
+          </TabsContent>
+          <TabsContent value="search-python">
+            <CodeSnippet code={getSearchPythonSnippet(keyDisplay)} language="python" />
           </TabsContent>
         </Tabs>
       </CardContent>

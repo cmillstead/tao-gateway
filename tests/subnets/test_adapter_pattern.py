@@ -2,13 +2,16 @@
 
 import pytest
 
-from gateway.subnets import ADAPTER_DEFINITIONS
 from gateway.subnets.base import AdapterConfig, BaseAdapter
+from gateway.subnets.factory import _ADAPTER_MAP
 from gateway.subnets.sn1_text import SN1TextAdapter
 from gateway.subnets.sn19_image import SN19ImageAdapter
+from gateway.subnets.sn22_search import SN22SearchAdapter
+from gateway.subnets.sn32_detect import SN32DetectionAdapter
 from gateway.subnets.sn62_code import SN62CodeAdapter
 
-ALL_ADAPTERS = [cls for cls, _names, _attr in ADAPTER_DEFINITIONS]
+# All adapters from both the legacy list and the factory map
+ALL_ADAPTERS = list({cls for cls, _names in _ADAPTER_MAP.values()})
 
 
 class TestAdapterPattern:
@@ -63,5 +66,15 @@ class TestAdapterPattern:
 
     def test_sn62_no_streaming(self):
         adapter = SN62CodeAdapter()
+        with pytest.raises(NotImplementedError):
+            adapter.to_streaming_synapse({})
+
+    def test_sn32_no_streaming(self):
+        adapter = SN32DetectionAdapter()
+        with pytest.raises(NotImplementedError):
+            adapter.to_streaming_synapse({})
+
+    def test_sn22_no_streaming(self):
+        adapter = SN22SearchAdapter()
         with pytest.raises(NotImplementedError):
             adapter.to_streaming_synapse({})

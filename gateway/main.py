@@ -28,7 +28,7 @@ from gateway.middleware.security_headers import SecurityHeadersMiddleware
 from gateway.routing.metagraph_sync import MetagraphManager
 from gateway.routing.scorer import MinerScorer
 from gateway.routing.selector import MinerSelector
-from gateway.subnets import ADAPTER_DEFINITIONS
+from gateway.subnets.factory import adapter_factory, get_model_names
 from gateway.subnets.registry import AdapterRegistry
 from gateway.tasks.debug_cleanup import DebugLogCleanupTask
 from gateway.tasks.score_flush import ScoreFlushTask
@@ -78,18 +78,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             sync_timeout=settings.dendrite_timeout_seconds,
         )
 
-        # Register subnets and adapters from ADAPTER_DEFINITIONS
+        # Register only enabled subnets (config-driven)
         adapter_registry = AdapterRegistry()
-        for adapter_cls, model_names, netuid_attr in ADAPTER_DEFINITIONS:
-            netuid = getattr(settings, netuid_attr)
+        for netuid in settings.enabled_subnets:
+            adapter = adapter_factory(netuid)
+            if adapter is None:
+                logger.warning("unknown_subnet_skipped", netuid=netuid)
+                continue
+            model_names = get_model_names(netuid)
             metagraph_manager.register_subnet(netuid)
-            adapter_registry.register(adapter_cls(), model_names=model_names)
+            adapter_registry.register(adapter, model_names=model_names)
+
+        logger.info(
+            "subnets_registered",
+            enabled=settings.enabled_subnets,
+            registered=adapter_registry.get_all_netuids(),
+        )
 
         await metagraph_manager.start()
 
         try:
-            for _adapter_cls, _model_names, netuid_attr in ADAPTER_DEFINITIONS:
-                netuid = getattr(settings, netuid_attr)
+            for netuid in settings.enabled_subnets:
+                if adapter_factory(netuid) is None:
+                    continue  # Unknown subnet, already warned
                 if metagraph_manager.get_metagraph(netuid) is None:
                     logger.error("startup_metagraph_empty", netuid=netuid)
                     raise RuntimeError(
@@ -102,9 +113,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         # Build subnet timeout map for quality scoring normalization
         subnet_timeouts: dict[int, float] = {}
-        for _adapter_cls, _model_names, netuid_attr in ADAPTER_DEFINITIONS:
-            netuid = getattr(settings, netuid_attr)
-            timeout_attr = netuid_attr.replace("_netuid", "_timeout_seconds")
+        for netuid in settings.enabled_subnets:
+            # Look up timeout setting by convention: sn{N}_timeout_seconds
+            timeout_attr = f"sn{netuid}_timeout_seconds"
             timeout_ms = getattr(settings, timeout_attr, settings.dendrite_timeout_seconds) * 1000
             subnet_timeouts[netuid] = timeout_ms
 

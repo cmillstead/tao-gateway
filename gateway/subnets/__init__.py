@@ -11,3 +11,6 @@ ADAPTER_DEFINITIONS: list[tuple[type[BaseAdapter], list[str], str]] = [
     (SN19ImageAdapter, ["tao-sn19"], "sn19_netuid"),
     (SN62CodeAdapter, ["tao-sn62"], "sn62_netuid"),
 ]
+
+# Re-export factory for lifespan use
+from gateway.subnets.factory import adapter_factory, get_model_names  # noqa: E402, F401

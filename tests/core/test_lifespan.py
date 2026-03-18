@@ -24,6 +24,7 @@ def _bt_settings_patch():
     mock.sn62_netuid = 62
     mock.sn19_timeout_seconds = 90
     mock.sn62_timeout_seconds = 30
+    mock.enabled_subnets = [1, 19, 62]
     mock.score_ema_alpha = 0.3
     mock.quality_sample_rate = 0.1
     mock.quality_weight = 0.3

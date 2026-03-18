@@ -60,6 +60,20 @@ class Settings(BaseSettings):
     sn1_netuid: int = 1
     sn19_netuid: int = 19
     sn62_netuid: int = 62
+
+    # Subnet toggle — only these are registered at startup
+    enabled_subnets: list[int] = [32, 22]  # Default: new T&S subnets
+
+    # SN32 config
+    sn32_netuid: int = 32
+    sn32_timeout_seconds: int = 30
+    detection_rate_limit_per_minute: int = 60
+
+    # SN22 config
+    sn22_netuid: int = 22
+    sn22_timeout_seconds: int = 30
+    search_rate_limit_per_minute: int = 30
+
     metagraph_sync_interval_seconds: int = 120
     dendrite_timeout_seconds: int = 30
     sn19_timeout_seconds: int = 90

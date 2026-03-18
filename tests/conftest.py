@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 # These MUST be set before any gateway imports.
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://tao:tao@localhost:5432/tao_gateway_test"
 os.environ["DEBUG"] = "true"
+# Enable legacy subnets for existing tests (default is [32, 22] for production)
+os.environ["ENABLED_SUBNETS"] = "[1,19,62]"
 
 _db_url = os.environ["DATABASE_URL"]
 assert "test" in _db_url, f"Refusing to run tests against non-test database: {_db_url}"
